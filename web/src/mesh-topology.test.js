@@ -78,7 +78,7 @@ test("face editing rejects bad selection and unsafe parameters without mutating 
   const mesh=cubeMesh(),before={positions:mesh.positions.slice(),normals:mesh.normals.slice(),indices:mesh.indices.slice()};
   assert.throws(()=>extrudeFace(mesh,999,.5),/valid face/);
   assert.throws(()=>extrudeFace(mesh,0,0),/non-zero/);
-  assert.throws(()=>insetFace(mesh,0,.5),/between 0 and 0.5/);
+  assert.throws(()=>insetFace(mesh,0,.5),/less than 0.5/);
   assert.deepEqual({positions:mesh.positions,normals:mesh.normals,indices:mesh.indices},before);
 });
 
