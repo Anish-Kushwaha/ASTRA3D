@@ -146,14 +146,14 @@ export function readAutosave(storage) {
 
 export function writeAutosave(snapshot, storage) {
   storage ??= browserStorage();
-  const payload = {
-    format: "ASTRA3D Autosave",
-    savedAt: Date.now(),
-    scene: createSceneDocument(snapshot.objects),
-    keys: snapshot.keys || {},
-    selected: snapshot.selected || null
-  };
   try {
+    const payload = {
+      format: "ASTRA3D Autosave",
+      savedAt: Date.now(),
+      scene: createSceneDocument(snapshot.objects),
+      keys: snapshot.keys || {},
+      selected: snapshot.selected || null
+    };
     storage?.setItem(AUTOSAVE_KEY, JSON.stringify(payload));
     return true;
   } catch {
