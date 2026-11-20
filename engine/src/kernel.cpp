@@ -1,66 +1,178 @@
 #include "astra/kernel.hpp"
+
 #include <algorithm>
-#include <unordered_set>
+#include <limits>
+#include <vector>
 
 namespace astra::kernel {
+
 Mat4 TransformComponent::localMatrix() const {
-    return Mat4::translation(position)*Mat4::rotationZ(rotation.z)*
-           Mat4::rotationY(rotation.y)*Mat4::rotationX(rotation.x)*Mat4::scale(scale);
+    return Mat4::translation(position) *
+           Mat4::rotationZ(rotation.z) *
+           Mat4::rotationY(rotation.y) *
+           Mat4::rotationX(rotation.x) *
+           Mat4::scale(scale);
 }
 
 EntityId SceneDatabase::create(std::string name, EntityId parent) {
-    if(parent!=kInvalidEntity && !find(parent)) return kInvalidEntity;
-    const EntityId id=nextId_++;
-    Entity entity; entity.id=id; entity.name=std::move(name); entity.parent=parent;
-    entities_.emplace(id,std::move(entity));
-    if(parent!=kInvalidEntity) entities_.at(parent).children.push_back(id);
+    if (nextId_ == kInvalidEntity) return kInvalidEntity;
+
+    Entity* parentEntity = nullptr;
+    if (parent != kInvalidEntity) {
+        parentEntity = find(parent);
+        if (!parentEntity) return kInvalidEntity;
+
+        // Reserve before inserting the entity so the hierarchy update cannot
+        // leave an orphaned entity if vector allocation fails.
+        parentEntity->children_.reserve(parentEntity->children_.size() + 1);
+    }
+
+    Entity entity;
+    entity.id_ = nextId_;
+    entity.name_ = std::move(name);
+    entity.parent_ = parent;
+
+    const EntityId id = entity.id_;
+    const auto [it, inserted] = entities_.emplace(id, std::move(entity));
+    if (!inserted) return kInvalidEntity;
+
+    if (parentEntity) parentEntity->children_.push_back(id);
+
+    if (nextId_ == std::numeric_limits<EntityId>::max()) {
+        nextId_ = kInvalidEntity;
+    } else {
+        ++nextId_;
+    }
     return id;
 }
 
 bool SceneDatabase::destroy(EntityId id) {
-    auto it=entities_.find(id); if(it==entities_.end()) return false;
-    const auto children=it->second.children;
-    for(EntityId child:children) destroy(child);
-    if(it->second.parent!=kInvalidEntity) {
-        if(auto* parent=find(it->second.parent)) {
-            auto& list=parent->children;
-            list.erase(std::remove(list.begin(),list.end(),id),list.end());
-        }
-    }
-    entities_.erase(id); return true;
-}
+    const Entity* root = find(id);
+    if (!root) return false;
 
-bool SceneDatabase::reparent(EntityId id, EntityId newParent) {
-    auto* entity=find(id);
-    if(!entity || id==newParent || (newParent!=kInvalidEntity && !find(newParent))) return false;
-    for(EntityId cursor=newParent;cursor!=kInvalidEntity;) {
-        if(cursor==id) return false;
-        const auto* ancestor=find(cursor); if(!ancestor) break;
-        cursor=ancestor->parent;
+    // Collect first, mutate second. This avoids recursive call-stack growth and
+    // leaves the database unchanged if temporary traversal allocation fails.
+    std::vector<EntityId> pending;
+    std::vector<EntityId> removalOrder;
+    pending.reserve(entities_.size());
+    removalOrder.reserve(entities_.size());
+    pending.push_back(id);
+
+    while (!pending.empty()) {
+        const EntityId currentId = pending.back();
+        pending.pop_back();
+
+        const Entity* current = find(currentId);
+        if (!current) continue;
+
+        for (const EntityId child : current->children_) {
+            pending.push_back(child);
+        }
+        removalOrder.push_back(currentId);
     }
-    const EntityId oldParent=entity->parent;
-    if(oldParent==newParent) return true;
-    if(oldParent!=kInvalidEntity) {
-        if(auto* old=find(oldParent)) {
-            auto& children=old->children;
-            children.erase(std::remove(children.begin(),children.end(),id),children.end());
+
+    const EntityId parentId = root->parent_;
+    if (parentId != kInvalidEntity) {
+        if (Entity* parent = find(parentId)) {
+            auto& siblings = parent->children_;
+            siblings.erase(
+                std::remove(siblings.begin(), siblings.end(), id),
+                siblings.end());
         }
     }
-    entity=find(id); entity->parent=newParent;
-    if(newParent!=kInvalidEntity) find(newParent)->children.push_back(id);
+
+    for (const EntityId removeId : removalOrder) {
+        entities_.erase(removeId);
+    }
     return true;
 }
 
-Entity* SceneDatabase::find(EntityId id) {
-    auto it=entities_.find(id); return it==entities_.end()?nullptr:&it->second;
+bool SceneDatabase::reparent(EntityId id, EntityId newParent) {
+    Entity* entity = find(id);
+    if (!entity || id == newParent) return false;
+    if (newParent != kInvalidEntity && !find(newParent)) return false;
+
+    for (EntityId ancestorId = newParent;
+         ancestorId != kInvalidEntity;) {
+        if (ancestorId == id) return false;
+
+        const Entity* ancestor = find(ancestorId);
+        if (!ancestor) return false;
+        ancestorId = ancestor->parent_;
+    }
+
+    const EntityId oldParentId = entity->parent_;
+    if (oldParentId == newParent) return true;
+
+    Entity* oldParent = oldParentId == kInvalidEntity ? nullptr : find(oldParentId);
+    Entity* newParentEntity = newParent == kInvalidEntity ? nullptr : find(newParent);
+    if (oldParentId != kInvalidEntity && !oldParent) return false;
+
+    if (newParentEntity) {
+        // Allocate before unlinking from the old parent for strong exception safety.
+        newParentEntity->children_.reserve(newParentEntity->children_.size() + 1);
+    }
+
+    if (oldParent) {
+        auto& oldChildren = oldParent->children_;
+        oldChildren.erase(
+            std::remove(oldChildren.begin(), oldChildren.end(), id),
+            oldChildren.end());
+    }
+
+    entity->parent_ = newParent;
+    if (newParentEntity) newParentEntity->children_.push_back(id);
+    return true;
 }
-const Entity* SceneDatabase::find(EntityId id) const {
-    auto it=entities_.find(id); return it==entities_.end()?nullptr:&it->second;
+
+Entity* SceneDatabase::find(EntityId id) noexcept {
+    const auto it = entities_.find(id);
+    return it == entities_.end() ? nullptr : &it->second;
 }
+
+const Entity* SceneDatabase::find(EntityId id) const noexcept {
+    const auto it = entities_.find(id);
+    return it == entities_.end() ? nullptr : &it->second;
+}
+
+std::optional<Mat4> SceneDatabase::worldMatrix(EntityId id) const {
+    const Entity* entity = find(id);
+    if (!entity) return std::nullopt;
+
+    std::vector<const Entity*> chain;
+    chain.reserve(std::min<std::size_t>(entities_.size(), 32));
+
+    while (entity) {
+        // A valid hierarchy cannot contain more ancestors than there are
+        // entities. This guard also turns internal corruption into a safe miss.
+        if (chain.size() >= entities_.size()) return std::nullopt;
+        chain.push_back(entity);
+
+        if (entity->parent_ == kInvalidEntity) break;
+        entity = find(entity->parent_);
+        if (!entity) return std::nullopt;
+    }
+
+    Mat4 result = Mat4::identity();
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+        result = result * (*it)->transform_.localMatrix();
+    }
+    return result;
+}
+
 std::vector<EntityId> SceneDatabase::roots() const {
     std::vector<EntityId> result;
-    for(const auto& [id,entity]:entities_) if(entity.parent==kInvalidEntity) result.push_back(id);
-    std::sort(result.begin(),result.end()); return result;
+    result.reserve(entities_.size());
+    for (const auto& [id, entity] : entities_) {
+        if (entity.parent_ == kInvalidEntity) result.push_back(id);
+    }
+    std::sort(result.begin(), result.end());
+    return result;
 }
-void SceneDatabase::clear() noexcept { entities_.clear(); nextId_=1; }
+
+void SceneDatabase::clear() noexcept {
+    entities_.clear();
+    // Do not reset nextId_: old EntityId values must never alias new entities.
+}
+
 } // namespace astra::kernel
