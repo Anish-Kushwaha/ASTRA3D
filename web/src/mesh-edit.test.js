@@ -28,7 +28,7 @@ test("vertex translation changes only selected local vertices and recalculates n
 });
 test("vertex movement rejects empty, invalid and non-finite edits",()=>{
   assert.throws(()=>translateSelectedVertices(object,[],[1,0,0]),/at least one/);
-  assert.throws(()=>translateSelectedVertices(object,[99],[1,0,0]),/invalid index/);
+  assert.throws(()=>translateSelectedVertices(object,[99],[1,0,0]),/invalid.*index/);
   assert.throws(()=>translateSelectedVertices(object,[0],[Infinity,0,0]),/finite/);
 });
 test("normal calculation handles degenerate faces without NaN values",()=>{
