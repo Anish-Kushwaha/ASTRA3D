@@ -167,23 +167,33 @@ export function buildMeshTopology(mesh){
     }
   }
 
-  const union=makeUnion(triangleCount);
-  for(const uses of edgeUses.values()){
-    if(uses.length<2)continue;
-    for(let i=0;i<uses.length;i++)for(let j=i+1;j<uses.length;j++){
-      const a=triangles[uses[i].triangle],b=triangles[uses[j].triangle];
-      if(dot(a.normal,b.normal)>.99999&&Math.abs(a.plane-b.plane)<1e-5){
-        union.join(uses[i].triangle,uses[j].triangle);
+  const grouped=new Map();
+  const suppliedFaceGroups=Array.isArray(mesh.faceGroups)&&mesh.faceGroups.length===triangleCount&&
+    mesh.faceGroups.every(value=>Number.isInteger(value)&&value>=0);
+  if(suppliedFaceGroups){
+    for(let triangle=0;triangle<triangleCount;triangle++){
+      const label=mesh.faceGroups[triangle];
+      if(!grouped.has(label))grouped.set(label,[]);
+      grouped.get(label).push(triangle);
+    }
+  }else{
+    const union=makeUnion(triangleCount);
+    for(const uses of edgeUses.values()){
+      if(uses.length<2)continue;
+      for(let i=0;i<uses.length;i++)for(let j=i+1;j<uses.length;j++){
+        const left=triangles[uses[i].triangle],right=triangles[uses[j].triangle];
+        if(dot(left.normal,right.normal)>.99999&&Math.abs(left.plane-right.plane)<1e-5){
+          union.join(uses[i].triangle,uses[j].triangle);
+        }
       }
+    }
+    for(let triangle=0;triangle<triangleCount;triangle++){
+      const root=union.find(triangle);
+      if(!grouped.has(root))grouped.set(root,[]);
+      grouped.get(root).push(triangle);
     }
   }
 
-  const grouped=new Map();
-  for(let triangle=0;triangle<triangleCount;triangle++){
-    const root=union.find(triangle);
-    if(!grouped.has(root))grouped.set(root,[]);
-    grouped.get(root).push(triangle);
-  }
   const faces=[],triangleFaceIds=new Array(triangleCount).fill(-1);
   for(const triangleIds of grouped.values()){
     const faceId=faces.length,set=new Set(triangleIds),boundaryUses=[];
@@ -221,6 +231,7 @@ export function buildMeshTopology(mesh){
     edges.push(edge);
     edgeByKey.set(key,edge);
   }
+  mesh.faceGroups=triangleFaceIds.slice();
   return {edges,faces,triangleFaceIds,edgeByKey};
 }
 
