@@ -160,10 +160,14 @@ export function readAutosave(storage) {
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed?.format !== "ASTRA3D Autosave" || !parsed.scene) return null;
+    const scene = parseSceneDocument({
+      ...parsed.scene,
+      keys: parsed.scene.keys ?? parsed.keys ?? {}
+    });
     return {
       savedAt: Number.isFinite(parsed.savedAt) ? parsed.savedAt : null,
-      scene: parseSceneDocument(parsed.scene),
-      keys: parsed.keys && typeof parsed.keys === "object" ? parsed.keys : {},
+      scene,
+      keys: scene.keys,
       selected: typeof parsed.selected === "string" ? parsed.selected : null
     };
   } catch {
