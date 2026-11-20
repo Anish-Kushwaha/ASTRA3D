@@ -63,3 +63,17 @@ test("autosave handles storage failures without crashing", () => {
   assert.equal(writeAutosave({objects:[],keys:{},selected:null},broken),false);
   assert.equal(readAutosave(broken),null);
 });
+
+test("scene export preserves ordered animation keyframes", () => {
+  const keys = {"mesh-1":[
+    {time:0,position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]},
+    {time:1,position:[1,0,0],rotation:[0,1,0],scale:[1,1,1]}
+  ]};
+  const scene = createSceneDocument([object],keys);
+  assert.equal(scene.keys["mesh-1"].length,2);
+  assert.equal(scene.keys["mesh-1"][1].position[0],1);
+  assert.throws(()=>createSceneDocument([object],{"mesh-1":[
+    {time:1,position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]},
+    {time:0,position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]}
+  ]}),/unordered time/);
+});
