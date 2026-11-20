@@ -43,6 +43,9 @@ ASTRA3D.sphere({ "name": "Head", "position": [0, 1.65, 0], "scale": [0.65, 0.65,
 ```
 The current script mode supports one primitive command per line: cube, sphere, cylinder, torus or plane. It is deliberately not a general JavaScript runtime.
 
+## Blender-derived desktop direction
+The long-term desktop strategy is to build ASTRA3D as a clearly branded, license-compliant derivative using Blender's mature application and engine foundations. The upstream import has not yet been performed; review the [Blender-derived product strategy](docs/BLENDER_DERIVATIVE_PLAN.md), especially the GPL-3.0 licensing and separate-repository requirements, before source import.
+
 ## Architecture and honest status
 Read [Product Architecture](docs/PRODUCT_ARCHITECTURE.md) and [Engine Architecture](docs/ARCHITECTURE.md).
 
