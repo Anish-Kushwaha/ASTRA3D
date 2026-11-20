@@ -146,6 +146,7 @@ export function readAutosave(storage) {
 
 export function writeAutosave(snapshot, storage) {
   storage ??= browserStorage();
+  if (!storage) return false;
   try {
     const payload = {
       format: "ASTRA3D Autosave",
