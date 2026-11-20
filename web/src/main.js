@@ -38,10 +38,16 @@ function inspector(){
 }
 function setEditMode(mode){
  state.editMode=mode==='vertex'?'vertex':'object';
- if(state.editMode==='object')state.selectedVertices=[];
+ if(state.editMode==='object'){state.selectedVertices=[];state.multiSelect=false;}
+ const multiButton=$('#toggle-multi-select');
+ if(multiButton){
+  multiButton.hidden=state.editMode!=='vertex';
+  multiButton.classList.toggle('active',state.multiSelect);
+  multiButton.setAttribute('aria-pressed',String(state.multiSelect));
+ }
  $$('[data-edit-mode]').forEach(button=>button.classList.toggle('active',button.dataset.editMode===state.editMode));
  const hint=$('#viewport-help');
- if(hint)hint.textContent=state.editMode==='vertex'?'VERTEX EDIT · TAP TO SELECT · SHIFT + TAP FOR MULTI-SELECT':'DRAG TO ORBIT · SCROLL TO ZOOM · TAP OBJECT TO SELECT';
+ if(hint)hint.textContent=state.editMode==='vertex'?'VERTEX EDIT · TAP TO SELECT · MULTI TOGGLE FOR ADDITIVE SELECTION':'DRAG TO ORBIT · SCROLL TO ZOOM · TAP OBJECT TO SELECT';
  sync();
 }
 function setMode(m){state.mode=m;$$('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));$('#visual-panel').hidden=m!=='visual';$('#code-panel').hidden=m!=='code';}
@@ -65,7 +71,7 @@ let renderer;try{renderer=new AstraRenderer($('#viewport'));}catch(e){error(e);}
 $('#code-editor').value=sampleCode();const savedDraft=readAutosave();if(savedDraft){state.objects=savedDraft.scene.objects;state.keys=savedDraft.keys;state.selected=savedDraft.selected;}history.reset(captureSnapshot());sync();setMode('visual');setEditMode('object');updateHistoryControls();if(!savedDraft)queueAutosave();
 $$('[data-add]').forEach(b=>b.onclick=()=>add(b.dataset.add));$$('[data-mode]').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));$('#run-code').onclick=()=>{try{runCode();}catch(e){error(e);}};
 $('#export-scene').onclick=exportScene;$('#undo').onclick=undo;$('#redo').onclick=redo;$('#open-scene').onclick=()=>$('#scene-file').click();$('#scene-file').onchange=e=>e.target.files[0]&&importScene(e.target.files[0]);$('#import-obj').onclick=()=>$('#obj-file').click();$('#obj-file').onchange=e=>e.target.files[0]&&importOBJ(e.target.files[0]);
-$('[data-edit-mode]').forEach(button=>button.onclick=()=>setEditMode(button.dataset.editMode));$('#toggle-grid').onclick=()=>{state.grid=!state.grid;$('#toggle-grid').classList.toggle('active',state.grid);};$('#focus-view').onclick=()=>{state.camera.target=[0,0,0];state.camera.distance=7;};
+$('[data-edit-mode]').forEach(button=>button.onclick=()=>setEditMode(button.dataset.editMode));$('#toggle-multi-select').onclick=()=>{state.multiSelect=!state.multiSelect;$('#toggle-multi-select').classList.toggle('active',state.multiSelect);$('#toggle-multi-select').setAttribute('aria-pressed',String(state.multiSelect));};$('#toggle-grid').onclick=()=>{state.grid=!state.grid;$('#toggle-grid').classList.toggle('active',state.grid);};$('#focus-view').onclick=()=>{state.camera.target=[0,0,0];state.camera.distance=7;};
 $('#add-key').onclick=addKey;$('#scrubber').oninput=e=>{state.time=+e.target.value;applyKeys();$('#time-readout').textContent=state.time.toFixed(2)+'s';};$('#play').onclick=()=>state.playing=true;$('#stop').onclick=()=>{state.playing=false;state.time=0;$('#scrubber').value=0;applyKeys();};
 document.addEventListener('keydown',event=>{const target=event.target;if(target instanceof HTMLElement&&(target.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(target.tagName)))return;const mod=event.ctrlKey||event.metaKey;if(!mod)return;const key=event.key.toLowerCase();if(key==='z'){event.preventDefault();event.shiftKey?redo():undo();}else if(key==='y'){event.preventDefault();redo();}else if(key==='s'){event.preventDefault();exportScene();}});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')writeAutosave(captureSnapshot());});window.addEventListener('pagehide',()=>writeAutosave(captureSnapshot()));
@@ -106,7 +112,7 @@ const releasePointer=(e,allowPick=false)=>{
         if(e.shiftKey||state.multiSelect){state.selectedVertices=state.selectedVertices.includes(vertex)?state.selectedVertices.filter(index=>index!==vertex):[...state.selectedVertices,vertex];}
         else state.selectedVertices=[vertex];
         sync();
-      }else if(!hit&&!e.shiftKey){state.selected=null;state.selectedVertices=[];sync();}
+      }else if(!hit&&!e.shiftKey&&!state.multiSelect){state.selected=null;state.selectedVertices=[];sync();}
     }else{
       state.selected=pickObject(state.objects,state.camera,canvas,e.clientX,e.clientY);
       state.selectedVertices=[];
