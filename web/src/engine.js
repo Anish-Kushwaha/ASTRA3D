@@ -25,7 +25,71 @@ export class AstraRenderer{
  get(m){let o=this.cache.get(m);if(!o){o=this.upload(m);this.cache.set(m,o);}return o;}
  invalidate(mesh){const old=this.cache.get(mesh);if(!old)return;const g=this.gl;g.deleteVertexArray(old.vao);g.deleteVertexArray(old.pointVao);for(const buffer of old.buffers)g.deleteBuffer(buffer);this.cache.delete(mesh);}
  resize(){let d=Math.min(devicePixelRatio||1,2),w=Math.max(1,Math.floor(this.canvas.clientWidth*d)),h=Math.max(1,Math.floor(this.canvas.clientHeight*d));if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;}this.gl.viewport(0,0,w,h);}
- render(objects,camera,selected,grid=true,wire=false,editState=null){let g=this.gl;this.resize();g.clear(g.COLOR_BUFFER_BIT|g.DEPTH_BUFFER_BIT);g.useProgram(this.program);g.uniform1f(this.loc.pointSize,1);g.uniform1i(this.loc.pointMode,0);let eye=[camera.target[0]+Math.sin(camera.yaw)*Math.cos(camera.pitch)*camera.distance,camera.target[1]+Math.sin(camera.pitch)*camera.distance,camera.target[2]+Math.cos(camera.yaw)*Math.cos(camera.pitch)*camera.distance],view=M.view(eye,camera.target,[0,1,0]),proj=M.perspective(camera.fov*Math.PI/180,this.canvas.width/this.canvas.height,.05,1000);g.uniform3fv(this.loc.light,new Float32Array([-.5,-1,-.4]));g.uniform3fv(this.loc.camera,new Float32Array(eye));if(grid){g.disable(g.CULL_FACE);g.uniform1i(this.loc.unlit,1);g.uniform3fv(this.loc.color,new Float32Array([.14,.2,.28]));let id=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);g.uniformMatrix4fv(this.loc.model,false,id);g.uniformMatrix4fv(this.loc.mvp,false,M.mul(proj,M.mul(view,id)));g.bindVertexArray(this.grid.vao);g.drawElements(g.LINES,this.grid.count,g.UNSIGNED_INT,0);g.enable(g.CULL_FACE);}for(let o of objects){let model=M.model(o.position,o.rotation,o.scale),mvp=M.mul(proj,M.mul(view,model)),gpu=this.get(o.mesh);g.uniformMatrix4fv(this.loc.model,false,model);g.uniformMatrix4fv(this.loc.mvp,false,mvp);g.uniform3fv(this.loc.color,new Float32Array(o.color));g.uniform1i(this.loc.unlit,0);g.bindVertexArray(gpu.vao);if(wire){g.polygonMode?.(g.FRONT_AND_BACK,g.LINE);}g.drawElements(gpu.mode,gpu.count,g.UNSIGNED_INT,0);if(wire)g.polygonMode?.(g.FRONT_AND_BACK,g.FILL);if(o.id===selected){g.disable(g.CULL_FACE);g.uniform1i(this.loc.unlit,1);g.uniform3fv(this.loc.color,new Float32Array([.15,.75,1]));g.lineWidth(2);g.enable(g.POLYGON_OFFSET_LINE);g.polygonOffset(-1,-1);g.drawElements(g.LINES,0,g.UNSIGNED_INT,0);g.disable(g.POLYGON_OFFSET_LINE);g.enable(g.CULL_FACE);}}if(editState?.mode==='vertex'){const object=objects.find(item=>item.id===editState.objectId);if(object){g.depthFunc(g.LEQUAL);const model=M.model(object.position,object.rotation,object.scale),mvp=M.mul(proj,M.mul(view,model)),gpu=this.get(object.mesh);g.uniformMatrix4fv(this.loc.model,false,model);g.uniformMatrix4fv(this.loc.mvp,false,mvp);g.uniform1i(this.loc.unlit,1);g.uniform1i(this.loc.pointMode,1);g.uniform1f(this.loc.pointSize,8);g.uniform3fv(this.loc.color,new Float32Array([.86,.88,.9]));g.bindVertexArray(gpu.pointVao);g.drawArrays(g.POINTS,0,gpu.vertexCount);const selectedIndices=[...new Set(editState.selectedVertices||[])].filter(index=>Number.isInteger(index)&&index>=0&&index<gpu.vertexCount);if(selectedIndices.length){const points=[];for(const index of selectedIndices)points.push(...object.mesh.positions.slice(index*3,index*3+3));g.bindVertexArray(this.selectionVao);g.bindBuffer(g.ARRAY_BUFFER,this.selectionBuffer);g.bufferData(g.ARRAY_BUFFER,new Float32Array(points),g.DYNAMIC_DRAW);g.uniform1f(this.loc.pointSize,12);g.uniform3fv(this.loc.color,new Float32Array([1,.46,.12]));g.drawArrays(g.POINTS,0,selectedIndices.length);}}}g.depthFunc(g.LESS);g.uniform1i(this.loc.pointMode,0);g.uniform1f(this.loc.pointSize,1);g.bindVertexArray(null);}
+ render(objects,camera,selected,grid=true,wire=false,editState=null){let g=this.gl;this.resize();g.clear(g.COLOR_BUFFER_BIT|g.DEPTH_BUFFER_BIT);g.useProgram(this.program);g.uniform1f(this.loc.pointSize,1);g.uniform1i(this.loc.pointMode,0);let eye=[camera.target[0]+Math.sin(camera.yaw)*Math.cos(camera.pitch)*camera.distance,camera.target[1]+Math.sin(camera.pitch)*camera.distance,camera.target[2]+Math.cos(camera.yaw)*Math.cos(camera.pitch)*camera.distance],view=M.view(eye,camera.target,[0,1,0]),proj=M.perspective(camera.fov*Math.PI/180,this.canvas.width/this.canvas.height,.05,1000);g.uniform3fv(this.loc.light,new Float32Array([-.5,-1,-.4]));g.uniform3fv(this.loc.camera,new Float32Array(eye));if(grid){g.disable(g.CULL_FACE);g.uniform1i(this.loc.unlit,1);g.uniform3fv(this.loc.color,new Float32Array([.14,.2,.28]));let id=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);g.uniformMatrix4fv(this.loc.model,false,id);g.uniformMatrix4fv(this.loc.mvp,false,M.mul(proj,M.mul(view,id)));g.bindVertexArray(this.grid.vao);g.drawElements(g.LINES,this.grid.count,g.UNSIGNED_INT,0);g.enable(g.CULL_FACE);}for(let o of objects){let model=M.model(o.position,o.rotation,o.scale),mvp=M.mul(proj,M.mul(view,model)),gpu=this.get(o.mesh);g.uniformMatrix4fv(this.loc.model,false,model);g.uniformMatrix4fv(this.loc.mvp,false,mvp);g.uniform3fv(this.loc.color,new Float32Array(o.color));g.uniform1i(this.loc.unlit,0);g.bindVertexArray(gpu.vao);if(wire){g.polygonMode?.(g.FRONT_AND_BACK,g.LINE);}g.drawElements(gpu.mode,gpu.count,g.UNSIGNED_INT,0);if(wire)g.polygonMode?.(g.FRONT_AND_BACK,g.FILL);if(o.id===selected){g.disable(g.CULL_FACE);g.uniform1i(this.loc.unlit,1);g.uniform3fv(this.loc.color,new Float32Array([.15,.75,1]));g.lineWidth(2);g.enable(g.POLYGON_OFFSET_LINE);g.polygonOffset(-1,-1);g.drawElements(g.LINES,0,g.UNSIGNED_INT,0);g.disable(g.POLYGON_OFFSET_LINE);g.enable(g.CULL_FACE);}}if(['vertex','edge','face'].includes(editState?.mode)){
+  const object=objects.find(item=>item.id===editState.objectId);
+  if(object){
+    g.depthFunc(g.LEQUAL);
+    const model=M.model(object.position,object.rotation,object.scale);
+    const mvp=M.mul(proj,M.mul(view,model));
+    const gpu=this.get(object.mesh);
+    g.uniformMatrix4fv(this.loc.model,false,model);
+    g.uniformMatrix4fv(this.loc.mvp,false,mvp);
+    g.uniform1i(this.loc.unlit,1);
+    const drawLines=(segments,color,width=1)=>{
+      if(!segments.length)return;
+      const points=[];
+      for(const segment of segments){
+        points.push(...object.mesh.positions.slice(segment[0]*3,segment[0]*3+3));
+        points.push(...object.mesh.positions.slice(segment[1]*3,segment[1]*3+3));
+      }
+      g.uniform1i(this.loc.pointMode,0);
+      g.uniform1f(this.loc.pointSize,1);
+      g.uniform3fv(this.loc.color,new Float32Array(color));
+      g.lineWidth(width);
+      g.bindVertexArray(this.selectionVao);
+      g.bindBuffer(g.ARRAY_BUFFER,this.selectionBuffer);
+      g.bufferData(g.ARRAY_BUFFER,new Float32Array(points),g.DYNAMIC_DRAW);
+      g.drawArrays(g.LINES,0,points.length/3);
+    };
+    if(editState.mode==='vertex'){
+      g.uniform1i(this.loc.pointMode,1);
+      g.uniform1f(this.loc.pointSize,8);
+      g.uniform3fv(this.loc.color,new Float32Array([.86,.88,.9]));
+      g.bindVertexArray(gpu.pointVao);
+      g.drawArrays(g.POINTS,0,gpu.vertexCount);
+      const selectedIndices=[...new Set(editState.selectedVertices||[])].filter(index=>Number.isInteger(index)&&index>=0&&index<gpu.vertexCount);
+      if(selectedIndices.length){
+        const points=[];
+        for(const index of selectedIndices)points.push(...object.mesh.positions.slice(index*3,index*3+3));
+        g.bindVertexArray(this.selectionVao);
+        g.bindBuffer(g.ARRAY_BUFFER,this.selectionBuffer);
+        g.bufferData(g.ARRAY_BUFFER,new Float32Array(points),g.DYNAMIC_DRAW);
+        g.uniform3fv(this.loc.color,new Float32Array([1,.46,.12]));
+        g.uniform1f(this.loc.pointSize,12);
+        g.drawArrays(g.POINTS,0,selectedIndices.length);
+      }
+    }else{
+      const topology=editState.topology;
+      if(topology){
+        drawLines(topology.edges.map(edge=>[edge.a,edge.b]),[.42,.48,.56],1);
+        if(editState.mode==='edge'){
+          const selected=new Set(editState.selectedEdges||[]);
+          drawLines(topology.edges.filter(edge=>selected.has(edge.id)).map(edge=>[edge.a,edge.b]),[1,.46,.12],3);
+        }
+        if(editState.mode==='face'){
+          const selected=new Set(editState.selectedFaces||[]);
+          const outlines=[];
+          for(const face of topology.faces){
+            if(!selected.has(face.id))continue;
+            for(const edge of face.boundary)outlines.push([edge.a,edge.b]);
+          }
+          drawLines(outlines,[1,.46,.12],3);
+        }
+      }
+    }
+  }
+}
+g.depthFunc(g.LESS);g.uniform1i(this.loc.pointMode,0);g.uniform1f(this.loc.pointSize,1);g.bindVertexArray(null);}
 }
 
 export function pickObject(objects, camera, canvas, clientX, clientY) {
