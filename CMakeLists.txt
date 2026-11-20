@@ -12,6 +12,7 @@ add_library(astra_engine
     engine/src/framebuffer.cpp
     engine/src/renderer.cpp
     engine/src/scene.cpp
+    engine/src/kernel.cpp
 )
 target_include_directories(astra_engine PUBLIC engine/include)
 target_compile_features(astra_engine PUBLIC cxx_std_20)
