@@ -287,6 +287,7 @@ export function extrudeFace(mesh,faceId,distance,topology=buildMeshTopology(mesh
   if(!face)throw new Error("Select a valid face before extruding.");
   const polygon=facePolygon(mesh,face),normal=faceNormal(mesh,face);
   const topMap=new Map(),capIndices=[],sideIndices=[],baseVertexCount=mesh.positions.length/3;
+  let nextFaceGroup=topology.triangleFaceIds.reduce((maximum,value)=>Math.max(maximum,value),-1)+1;
   for(const triangle of face.triangles){
     const ids=mesh.indices.slice(triangle*3,triangle*3+3);
     for(const id of ids){
@@ -304,7 +305,10 @@ export function extrudeFace(mesh,faceId,distance,topology=buildMeshTopology(mesh
   }
   assertCapacity(mesh,topMap.size,capIndices.length+sideIndices.length);
   for(const value of topMap.values())mesh.positions.push(...value.point);
+  const addedFaceGroups=Array(capIndices.length/3).fill(nextFaceGroup++);
+  for(let edge=0;edge<polygon.boundary.length;edge++)addedFaceGroups.push(nextFaceGroup++,nextFaceGroup++);
   mesh.indices.push(...capIndices,...sideIndices);
+  mesh.faceGroups=[...topology.triangleFaceIds,...addedFaceGroups];
   recomputeNormals(mesh);
   return {verticesAdded:topMap.size,facesExtruded:1,trianglesAdded:face.triangles.length+polygon.boundary.length*2};
 }
@@ -321,19 +325,23 @@ export function insetFace(mesh,faceId,amount=.15,topology=buildMeshTopology(mesh
   const inner=polygon.points.map(point=>point.map((value,axis)=>center[axis]+(value-center[axis])*(1-amount)));
   const baseVertexCount=mesh.positions.length/3;
   const innerIds=inner.map((_,index)=>baseVertexCount+index);
-  const faceSet=new Set(face.triangles),kept=[];
+  const faceSet=new Set(face.triangles),kept=[],keptGroups=[];
   for(let triangle=0;triangle<mesh.indices.length/3;triangle++){
-    if(!faceSet.has(triangle))kept.push(...mesh.indices.slice(triangle*3,triangle*3+3));
+    if(!faceSet.has(triangle)){kept.push(...mesh.indices.slice(triangle*3,triangle*3+3));keptGroups.push(topology.triangleFaceIds[triangle]);}
   }
-  const added=[];
+  const added=[],addedGroups=[];
+  let nextFaceGroup=topology.triangleFaceIds.reduce((maximum,value)=>Math.max(maximum,value),-1)+1;
   for(let i=0;i<polygon.vertices.length;i++){
     const next=(i+1)%polygon.vertices.length;
     appendQuad(added,polygon.vertices[i],polygon.vertices[next],innerIds[next],innerIds[i]);
+    addedGroups.push(nextFaceGroup++,nextFaceGroup++);
   }
-  for(let i=1;i<innerIds.length-1;i++)added.push(innerIds[0],innerIds[i],innerIds[i+1]);
+  const innerFaceGroup=nextFaceGroup++;
+  for(let i=1;i<innerIds.length-1;i++){added.push(innerIds[0],innerIds[i],innerIds[i+1]);addedGroups.push(innerFaceGroup);}
   assertCapacity(mesh,innerIds.length,added.length);
   for(const point of inner)mesh.positions.push(...point);
   mesh.indices=[...kept,...added];
+  mesh.faceGroups=[...keptGroups,...addedGroups];
   recomputeNormals(mesh);
   return {verticesAdded:innerIds.length,facesInset:1,trianglesAdded:added.length/3};
 }
@@ -386,15 +394,17 @@ export function loopCutFromEdge(mesh,edgeId,topology=buildMeshTopology(mesh),rat
       [startPoint,endPoint,vertices[last],vertices[i]]
     ]);
   }
-  const kept=[];
+  const kept=[],keptGroups=[];
   for(let triangle=0;triangle<mesh.indices.length/3;triangle++){
-    if(!replacement.has(topology.triangleFaceIds[triangle]))kept.push(...mesh.indices.slice(triangle*3,triangle*3+3));
+    if(!replacement.has(topology.triangleFaceIds[triangle])){kept.push(...mesh.indices.slice(triangle*3,triangle*3+3));keptGroups.push(topology.triangleFaceIds[triangle]);}
   }
-  const added=[];
-  for(const polygons of replacement.values())for(const polygon of polygons)appendQuad(added,...polygon);
+  const added=[],addedGroups=[];
+  let nextFaceGroup=topology.triangleFaceIds.reduce((maximum,value)=>Math.max(maximum,value),-1)+1;
+  for(const polygons of replacement.values())for(const polygon of polygons){appendQuad(added,...polygon);addedGroups.push(nextFaceGroup++,nextFaceGroup++);}
   assertCapacity(mesh,edgePoints.size,added.length);
   for(const point of edgePoints.values())mesh.positions.push(...point.point);
   mesh.indices=[...kept,...added];
+  mesh.faceGroups=[...keptGroups,...addedGroups];
   recomputeNormals(mesh);
   return {facesCut:cuts.length,verticesAdded:edgePoints.size,quadsCreated:cuts.length*2};
 }
