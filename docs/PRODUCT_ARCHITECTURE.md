@@ -16,12 +16,13 @@ The browser Studio is designed to run directly in modern browsers on phones, tab
 The responsive/PWA implementation is an initial milestone. Real-device testing is still required on current Android and iOS browsers.
 
 ## Visual Studio
-- Scene hierarchy and object selection.
+- Scene hierarchy and direct click/tap selection in the 3D viewport.
+- Local undo/redo history and autosave recovery.
 - Procedural primitive creation: cube, sphere, cylinder, torus and plane.
 - Transform inspector: position, rotation, scale and base color.
 - Interactive perspective viewport with orbit, zoom and grid.
 - Wavefront OBJ triangle-mesh import.
-- ASTRA3D JSON scene import/export.
+- Versioned ASTRA3D Scene JSON v2 import/export, with v1 migration and geometry validation.
 - Transform keyframes and timeline playback with interpolation.
 
 ## Code Studio
@@ -50,7 +51,7 @@ Do not silently discard unsupported data during import/export. Add round-trip co
 Project sync, private asset storage, collaboration, team access controls and remote GPU rendering are future opt-in services. Core local browser editing must remain useful without them. Never embed service-role credentials in browser code.
 
 ## Current milestone boundaries
-This is an early editor foundation, not yet a complete digital-content-creation application. Major missing capabilities include topology editing (vertex/edge/face), sculpting, UV unwrapping, texture painting, armature/bone rigging, inverse kinematics, skin weights, node-based materials, physically based rendering, shadows, compositing, audio sync, robust production import/export, undo/redo, autosave, plugin SDK and validated cross-device project conversion.
+This is an early editor foundation, not yet a complete digital-content-creation application. Major missing capabilities include topology editing (vertex/edge/face), sculpting, UV unwrapping, texture painting, armature/bone rigging, inverse kinematics, skin weights, node-based materials, physically based rendering, shadows, compositing, audio sync, robust production import/export, plugin SDK and validated cross-device project conversion.
 
 ## Security
 Never execute uploaded source code with eval, Function, unrestricted dynamic imports or ambient privileges. The current script parser accepts only a limited ASTRA3D command grammar. Validate imported scene files and bound file size, vertex count, nesting depth and decompression work. Future user scripting should run in a sandboxed runtime with capability-based APIs, resource limits and explicit file/network permissions.
