@@ -77,3 +77,15 @@ test("scene export preserves ordered animation keyframes", () => {
     {time:0,position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]}
   ]}),/unordered time/);
 });
+
+test("autosave validates legacy top-level animation data before restoring", () => {
+  const store = new Map();
+  const storage = {getItem:key=>store.get(key)??null,setItem:(key,value)=>store.set(key,value)};
+  store.set(AUTOSAVE_KEY,JSON.stringify({
+    format:"ASTRA3D Autosave",
+    savedAt:Date.now(),
+    scene:{format:"ASTRA3D Scene",version:1,objects:[object]},
+    keys:{"mesh-1":[{time:"not-a-time",position:[0,0,0],rotation:[0,0,0],scale:[1,1,1]}]}
+  }));
+  assert.equal(readAutosave(storage),null);
+});
