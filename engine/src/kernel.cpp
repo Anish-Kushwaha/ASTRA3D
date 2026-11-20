@@ -27,14 +27,14 @@ EntityId SceneDatabase::create(std::string name, EntityId parent) {
         parentEntity->children_.reserve(parentEntity->children_.size() + 1);
     }
 
-    Entity entity;
-    entity.id_ = nextId_;
+    const EntityId id = nextId_;
+    const auto [it, inserted] = entities_.try_emplace(id);
+    if (!inserted) return kInvalidEntity;
+
+    Entity& entity = it->second;
+    entity.id_ = id;
     entity.name_ = std::move(name);
     entity.parent_ = parent;
-
-    const EntityId id = entity.id_;
-    const auto [it, inserted] = entities_.emplace(id, std::move(entity));
-    if (!inserted) return kInvalidEntity;
 
     if (parentEntity) parentEntity->children_.push_back(id);
 
