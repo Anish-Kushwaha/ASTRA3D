@@ -30,7 +30,46 @@ $$('[data-add]').forEach(b=>b.onclick=()=>add(b.dataset.add));$$('[data-mode]').
 $('#export-scene').onclick=exportScene;$('#open-scene').onclick=()=>$('#scene-file').click();$('#scene-file').onchange=e=>e.target.files[0]&&importScene(e.target.files[0]);$('#import-obj').onclick=()=>$('#obj-file').click();$('#obj-file').onchange=e=>e.target.files[0]&&importOBJ(e.target.files[0]);
 $('#toggle-grid').onclick=()=>{state.grid=!state.grid;$('#toggle-grid').classList.toggle('active',state.grid);};$('#focus-view').onclick=()=>{state.camera.target=[0,0,0];state.camera.distance=7;};
 $('#add-key').onclick=addKey;$('#scrubber').oninput=e=>{state.time=+e.target.value;applyKeys();$('#time-readout').textContent=state.time.toFixed(2)+'s';};$('#play').onclick=()=>state.playing=true;$('#stop').onclick=()=>{state.playing=false;state.time=0;$('#scrubber').value=0;applyKeys();};
-let drag=false,px=0,py=0,canvas=$('#viewport');canvas.onpointerdown=e=>{drag=true;px=e.clientX;py=e.clientY;canvas.setPointerCapture(e.pointerId);};canvas.onpointermove=e=>{if(!drag)return;state.camera.yaw-=(e.clientX-px)*.008;state.camera.pitch=Math.max(-1.45,Math.min(1.45,state.camera.pitch+(e.clientY-py)*.008));px=e.clientX;py=e.clientY;};canvas.onpointerup=()=>drag=false;canvas.onpointercancel=()=>drag=false;canvas.onwheel=e=>{e.preventDefault();state.camera.distance=Math.max(1.5,Math.min(50,state.camera.distance+Math.sign(e.deltaY)*.35));};
+let drag=false,px=0,py=0,canvas=$('#viewport'),activePointers=new Map(),lastPinchDistance=0;
+const pointerDistance=()=>{const points=[...activePointers.values()];return points.length<2?0:Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y);};
+canvas.onpointerdown=e=>{
+  activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  canvas.setPointerCapture(e.pointerId);
+  if(activePointers.size===1){drag=true;px=e.clientX;py=e.clientY;}
+  else if(activePointers.size===2){drag=false;lastPinchDistance=pointerDistance();}
+};
+canvas.onpointermove=e=>{
+  if(!activePointers.has(e.pointerId))return;
+  activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(activePointers.size===2){
+    const distance=pointerDistance();
+    if(lastPinchDistance>0&&distance>0){
+      state.camera.distance=Math.max(1.5,Math.min(50,state.camera.distance+(lastPinchDistance-distance)*.018));
+    }
+    lastPinchDistance=distance;
+    return;
+  }
+  if(!drag)return;
+  state.camera.yaw-=(e.clientX-px)*.008;
+  state.camera.pitch=Math.max(-1.45,Math.min(1.45,state.camera.pitch+(e.clientY-py)*.008));
+  px=e.clientX;py=e.clientY;
+};
+const releasePointer=e=>{
+  activePointers.delete(e.pointerId);
+  if(activePointers.size===1){
+    const point=[...activePointers.values()][0];
+    px=point.x;py=point.y;drag=true;
+  }else{
+    drag=false;
+    lastPinchDistance=0;
+  }
+};
+canvas.onpointerup=releasePointer;
+canvas.onpointercancel=releasePointer;
+canvas.onwheel=e=>{
+  e.preventDefault();
+  state.camera.distance=Math.max(1.5,Math.min(50,state.camera.distance+Math.sign(e.deltaY)*.35));
+};
 let last=performance.now();function frame(now){let dt=Math.min(.05,(now-last)/1000);last=now;if(state.playing){state.time+=dt;if(state.time>state.duration)state.time=0;$('#scrubber').value=state.time;$('#time-readout').textContent=state.time.toFixed(2)+'s';applyKeys();}renderer?.render(state.objects,state.camera,state.selected,state.grid);$('#object-count').textContent=state.objects.length;requestAnimationFrame(frame);}requestAnimationFrame(frame);
 
 
