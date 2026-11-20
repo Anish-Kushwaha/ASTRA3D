@@ -1,4 +1,4 @@
-const CACHE_NAME = "astra3d-shell-v1";
+const CACHE_NAME = "astra3d-shell-v2";
 const APP_SHELL = ["/", "/manifest.webmanifest", "/astra3d-icon.svg"];
 
 self.addEventListener("install", event => {
@@ -22,15 +22,14 @@ self.addEventListener("fetch", event => {
   if (request.method !== "GET" || new URL(request.url).origin !== self.location.origin) return;
 
   if (request.mode === "navigate") {
-    event.respondWith(
-      fetch(request)
-        .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put("/", copy));
-          return response;
-        })
-        .catch(() => caches.match("/"))
-    );
+    const network = fetch(request).then(response => {
+      if (response.ok) {
+        const copy = response.clone();
+        event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.put("/", copy)));
+      }
+      return response;
+    });
+    event.respondWith(network.catch(() => caches.match("/")));
     return;
   }
 
@@ -39,16 +38,13 @@ self.addEventListener("fetch", event => {
     /\.(?:js|css|svg|woff2?)$/i.test(url.pathname);
   if (!isAppAsset) return;
 
-  event.respondWith(
-    caches.match(request).then(cached => {
-      const refresh = fetch(request).then(response => {
-        if (response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
-        }
-        return response;
-      }).catch(() => cached);
-      return cached || refresh;
-    })
-  );
+  const refresh = fetch(request).then(response => {
+    if (response.ok) {
+      const copy = response.clone();
+      return caches.open(CACHE_NAME).then(cache => cache.put(request, copy)).then(() => response);
+    }
+    return response;
+  });
+  event.waitUntil(refresh.catch(() => undefined));
+  event.respondWith(caches.match(request).then(cached => cached || refresh).catch(() => refresh));
 });
