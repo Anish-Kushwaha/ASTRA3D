@@ -26,6 +26,7 @@ Create and inspect 3D projects directly in a modern browser on phones, tablets, 
 - Interactive WebGL 2 viewport with orbit and zoom.
 - Procedural cube, UV sphere, cylinder, torus and plane.
 - Scene hierarchy and direct click/tap selection in the 3D viewport.
+- Object mode and vertex edit mode with screen-space vertex selection, Shift multi-select, local-space vertex translation and recalculated mesh normals.
 - Transform and base-color inspector with validation.
 - 100-step undo/redo history and keyboard shortcuts (Ctrl/Cmd+Z, Shift+Z, Y).
 - Local browser autosave and recovery, independent of cloud sign-in.
@@ -79,7 +80,7 @@ See [Product Architecture](docs/PRODUCT_ARCHITECTURE.md), [Cross-device Architec
 
 ## Current status
 
-ASTRA3D is an early engineering foundation, not yet a production-complete Blender/Maya replacement. Vertex/edge/face editing, sculpting, UVs, rigging, skinning, advanced animation, physically based materials, shadows, compositing, robust glTF import/export, vertex/edge/face editing, sculpting, UVs, rigging, skinning, advanced materials, robust glTF import/export, plugin SDK, cloud sync and desktop packaging remain future work.
+ASTRA3D is an early engineering foundation, not yet a production-complete Blender/Maya replacement. Edge and face editing, extrusion, inset, loop cuts, sculpting, UVs, rigging, skinning, advanced animation, physically based materials, shadows, compositing, robust glTF import/export, plugin SDK, cloud sync and desktop packaging remain future work.
 
 ## License
 
