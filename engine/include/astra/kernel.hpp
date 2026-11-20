@@ -33,6 +33,12 @@ struct TransformComponent {
 // only type allowed to mutate parent/child relationships, preserving invariants.
 class Entity {
 public:
+    Entity() = default;
+    Entity(const Entity&) = delete;
+    Entity& operator=(const Entity&) = delete;
+    Entity(Entity&&) = delete;
+    Entity& operator=(Entity&&) = delete;
+
     EntityId id() const noexcept { return id_; }
     EntityId parent() const noexcept { return parent_; }
     const std::vector<EntityId>& children() const noexcept { return children_; }
