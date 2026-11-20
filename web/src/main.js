@@ -1,5 +1,5 @@
 import './style.css';
-import {AstraRenderer,MeshFactory,parseOBJ} from './engine.js';
+import {AstraRenderer,MeshFactory,parseOBJ,pickObject} from './engine.js';
 import {SceneHistory,parseSceneDocument,createSceneDocument,readAutosave,writeAutosave} from './project.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],uid=()=>crypto.randomUUID();
 const state={objects:[],selected:null,mode:'visual',grid:true,playing:false,time:0,duration:10,keys:{},camera:{target:[0,0,0],yaw:.65,pitch:.38,distance:7,fov:52}};
@@ -41,10 +41,11 @@ $('#toggle-grid').onclick=()=>{state.grid=!state.grid;$('#toggle-grid').classLis
 $('#add-key').onclick=addKey;$('#scrubber').oninput=e=>{state.time=+e.target.value;applyKeys();$('#time-readout').textContent=state.time.toFixed(2)+'s';};$('#play').onclick=()=>state.playing=true;$('#stop').onclick=()=>{state.playing=false;state.time=0;$('#scrubber').value=0;applyKeys();};
 document.addEventListener('keydown',event=>{const target=event.target;if(target instanceof HTMLElement&&(target.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(target.tagName)))return;const mod=event.ctrlKey||event.metaKey;if(!mod)return;const key=event.key.toLowerCase();if(key==='z'){event.preventDefault();event.shiftKey?redo():undo();}else if(key==='y'){event.preventDefault();redo();}else if(key==='s'){event.preventDefault();exportScene();}});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')writeAutosave(captureSnapshot());});window.addEventListener('pagehide',()=>writeAutosave(captureSnapshot()));
-let drag=false,px=0,py=0,canvas=$('#viewport'),activePointers=new Map(),lastPinchDistance=0;
+let drag=false,px=0,py=0,canvas=$('#viewport'),activePointers=new Map(),pointerStarts=new Map(),lastPinchDistance=0;
 const pointerDistance=()=>{const points=[...activePointers.values()];return points.length<2?0:Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y);};
 canvas.onpointerdown=e=>{
   activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  pointerStarts.set(e.pointerId,{x:e.clientX,y:e.clientY});
   canvas.setPointerCapture(e.pointerId);
   if(activePointers.size===1){drag=true;px=e.clientX;py=e.clientY;}
   else if(activePointers.size===2){drag=false;lastPinchDistance=pointerDistance();}
@@ -65,7 +66,13 @@ canvas.onpointermove=e=>{
   state.camera.pitch=Math.max(-1.45,Math.min(1.45,state.camera.pitch+(e.clientY-py)*.008));
   px=e.clientX;py=e.clientY;
 };
-const releasePointer=e=>{
+const releasePointer=(e,allowPick=false)=>{
+  const start=pointerStarts.get(e.pointerId);
+  if(allowPick&&activePointers.size===1&&start&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6){
+    state.selected=pickObject(state.objects,state.camera,canvas,e.clientX,e.clientY);
+    sync();
+  }
+  pointerStarts.delete(e.pointerId);
   activePointers.delete(e.pointerId);
   if(activePointers.size===1){
     const point=[...activePointers.values()][0];
@@ -75,8 +82,8 @@ const releasePointer=e=>{
     lastPinchDistance=0;
   }
 };
-canvas.onpointerup=releasePointer;
-canvas.onpointercancel=releasePointer;
+canvas.onpointerup=e=>releasePointer(e,true);
+canvas.onpointercancel=e=>releasePointer(e,false);
 canvas.onwheel=e=>{
   e.preventDefault();
   state.camera.distance=Math.max(1.5,Math.min(50,state.camera.distance+Math.sign(e.deltaY)*.35));
