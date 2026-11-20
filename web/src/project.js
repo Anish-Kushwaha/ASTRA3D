@@ -60,15 +60,19 @@ export function parseSceneDocument(source) {
     throw new Error(`Scene contains too many objects (maximum ${MAX_OBJECTS}).`);
   }
   let totalVertices = 0;
+  const seenIds = new Set();
   const objects = document.objects.map((object, index) => {
     if (!object || typeof object !== "object") throw new Error(`Invalid object at position ${index + 1}.`);
+    const id = typeof object.id === "string" ? object.id.slice(0, 80) : `imported-${index + 1}`;
+    if (seenIds.has(id)) throw new Error(`Duplicate object id: ${id}.`);
+    seenIds.add(id);
     const name = typeof object.name === "string" ? object.name.slice(0, 160) : `Object ${index + 1}`;
     if (!name.trim()) throw new Error(`Object ${index + 1} has an empty name.`);
     const mesh = validateMesh(object.mesh, index);
     totalVertices += mesh.positions.length / 3;
     if (totalVertices > MAX_VERTICES) throw new Error("Scene exceeds the total vertex limit.");
     return {
-      id: typeof object.id === "string" ? object.id.slice(0, 80) : `imported-${index + 1}`,
+      id,
       name,
       type: typeof object.type === "string" ? object.type.slice(0, 40) : "Mesh",
       mesh,
@@ -78,11 +82,34 @@ export function parseSceneDocument(source) {
       color: finiteVector(object.color ?? [0.39, 0.72, 0.93], 3, "color", { color: true })
     };
   });
-  return { format: FORMAT, version: CURRENT_VERSION, objects };
+  const sourceKeys = document.keys && typeof document.keys === "object" && !Array.isArray(document.keys) ? document.keys : {};
+  const validIds = new Set(objects.map(object => object.id));
+  const keys = {};
+  let totalKeys = 0;
+  for (const [objectId, frames] of Object.entries(sourceKeys)) {
+    if (!validIds.has(objectId)) continue;
+    if (!Array.isArray(frames) || frames.length > 10000) throw new Error("Invalid or oversized animation track.");
+    let previousTime = -Infinity;
+    keys[objectId] = frames.map((frame, index) => {
+      if (!frame || !Number.isFinite(frame.time) || frame.time < 0 || frame.time <= previousTime) {
+        throw new Error(`Animation key ${index + 1} has an invalid or unordered time.`);
+      }
+      previousTime = frame.time;
+      totalKeys++;
+      if (totalKeys > 50000) throw new Error("Scene exceeds the 50,000 animation key limit.");
+      return {
+        time: frame.time,
+        position: finiteVector(frame.position, 3, "keyframe position"),
+        rotation: finiteVector(frame.rotation, 3, "keyframe rotation"),
+        scale: finiteVector(frame.scale, 3, "keyframe scale", { positive: true })
+      };
+    });
+  }
+  return { format: FORMAT, version: CURRENT_VERSION, objects, keys };
 }
 
-export function createSceneDocument(objects) {
-  return parseSceneDocument({ format: FORMAT, version: CURRENT_VERSION, objects });
+export function createSceneDocument(objects, keys = {}) {
+  return parseSceneDocument({ format: FORMAT, version: CURRENT_VERSION, objects, keys });
 }
 
 export class SceneHistory {
@@ -151,7 +178,7 @@ export function writeAutosave(snapshot, storage) {
     const payload = {
       format: "ASTRA3D Autosave",
       savedAt: Date.now(),
-      scene: createSceneDocument(snapshot.objects),
+      scene: createSceneDocument(snapshot.objects, snapshot.keys || {}),
       keys: snapshot.keys || {},
       selected: snapshot.selected || null
     };
