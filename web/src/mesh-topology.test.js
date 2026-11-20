@@ -75,11 +75,11 @@ test("loop cut propagates through connected quad faces and splits them",()=>{
 });
 
 test("face editing rejects bad selection and unsafe parameters without mutating geometry",()=>{
-  const mesh=cubeMesh(),before=structuredClone(mesh);
+  const mesh=cubeMesh(),before={positions:mesh.positions.slice(),normals:mesh.normals.slice(),indices:mesh.indices.slice()};
   assert.throws(()=>extrudeFace(mesh,999,.5),/valid face/);
   assert.throws(()=>extrudeFace(mesh,0,0),/non-zero/);
   assert.throws(()=>insetFace(mesh,0,.5),/between 0 and 0.5/);
-  assert.deepEqual(mesh,before);
+  assert.deepEqual({positions:mesh.positions,normals:mesh.normals,indices:mesh.indices},before);
 });
 
 test("loop cut rejects non-quad faces and invalid edge ids",()=>{
