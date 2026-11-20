@@ -62,7 +62,10 @@ Feature detection must drive capability messaging. Do not rely on user-agent str
 - [x] Preserve local-first scene editing and export path.
 - [ ] Test touch gestures, file pickers and PWA install on real Android/iOS devices.
 - [ ] Add a capability panel for WebGL 2 limits, memory and WebGPU availability.
-- [ ] Add undo/redo, autosave and robust local project recovery.
+- [x] Add 100-step undo/redo history and keyboard shortcuts.
+- [x] Add local browser autosave and recovery using validated scene snapshots.
+- [x] Add versioned scene document v2 with v1 migration and bounded geometry validation.
+- [x] Add direct viewport object picking for click/tap selection.
 - [ ] Make phone workflows context-aware, with simplified tool panels.
 
 ### Shared project layer
@@ -86,4 +89,4 @@ Feature detection must drive capability messaging. Do not rely on user-agent str
 
 ## Current limitations
 
-The existing browser editor is an early WebGL 2 prototype. Its primitive modeling, transforms, imported OBJ meshes, simple keyframes and scene JSON are not feature-equivalent to Blender. The current responsive/PWA layer is an initial implementation and still requires browser/device testing. The desktop fork has an initial Python application template but no validated ASTRA3D desktop build yet.
+The browser editor remains an early WebGL 2 prototype. It now includes primitive modeling, transforms, OBJ import, viewport picking, simple keyframes, local undo/redo and autosave, but is not feature-equivalent to Blender. The current responsive/PWA layer is an initial implementation and still requires browser/device testing. The desktop fork has an initial Python application template but no validated ASTRA3D desktop build yet.
