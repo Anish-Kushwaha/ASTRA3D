@@ -4,20 +4,30 @@ const cross=(a,b)=>[
   a[2]*b[0]-a[0]*b[2],
   a[0]*b[1]-a[1]*b[0]
 ];
-const norm=value=>{const length=Math.hypot(...value);return length>1e-12?value.map(component=>component/length):[0,0,0];};
+const norm=value=>{
+  const length=Math.hypot(...value);
+  return length>1e-12?value.map(component=>component/length):[0,0,0];
+};
 
-function worldVertex(object,index){
-  const offset=index*3,positions=object.mesh.positions;
-  let x=positions[offset]*object.scale[0];
-  let y=positions[offset+1]*object.scale[1];
-  let z=positions[offset+2]*object.scale[2];
+function worldVertexTransform(object){
   const [rx,ry,rz]=object.rotation;
-  let c=Math.cos(rz),s=Math.sin(rz),nextX=c*x-s*y,nextY=s*x+c*y;
-  x=nextX;y=nextY;
-  c=Math.cos(ry);s=Math.sin(ry);nextX=c*x+s*z;let nextZ=-s*x+c*z;
-  x=nextX;z=nextZ;
-  c=Math.cos(rx);s=Math.sin(rx);nextY=c*y-s*z;nextZ=s*y+c*z;
-  return [x+object.position[0],nextY+object.position[1],nextZ+object.position[2]];
+  const cr=Math.cos(rz),sr=Math.sin(rz);
+  const cy=Math.cos(ry),sy=Math.sin(ry);
+  const cx=Math.cos(rx),sx=Math.sin(rx);
+  const scale=object.scale,position=object.position,positions=object.mesh.positions;
+  return index=>{
+    const offset=index*3;
+    const x=positions[offset]*scale[0];
+    const y=positions[offset+1]*scale[1];
+    const z=positions[offset+2]*scale[2];
+    const xz=cr*x-sr*y,yz=sr*x+cr*y;
+    const xy=cy*xz+sy*z,zy=-sy*xz+cy*z;
+    return [
+      xy+position[0],
+      cx*yz-sx*zy+position[1],
+      sx*yz+cx*zy+position[2]
+    ];
+  };
 }
 
 export function pickVertex(object,camera,canvas,clientX,clientY,radius=14){
@@ -34,37 +44,57 @@ export function pickVertex(object,camera,canvas,clientX,clientY,radius=14){
   const tangent=Math.tan(camera.fov*Math.PI/360);
   const aspect=rect.width/rect.height;
   const pointerX=clientX-rect.left,pointerY=clientY-rect.top;
-  const positions=object.mesh.positions;
-  const vertexCount=Math.min(positions.length/3,300000);
+  const vertexCount=Math.min(object.mesh.positions.length/3,300000);
+  const getWorldVertex=worldVertexTransform(object);
   let best=null,bestDistance=radius*radius,bestDepth=Infinity;
   for(let index=0;index<vertexCount;index++){
-    const relative=worldVertex(object,index).map((value,axis)=>value-eye[axis]);
+    const world=getWorldVertex(index);
+    const relative=world.map((value,axis)=>value-eye[axis]);
     const depth=dot(relative,forward);
     if(depth<=0)continue;
     const screenX=rect.width/2+(dot(relative,right)/(depth*tangent*aspect))*(rect.width/2);
     const screenY=rect.height/2-(dot(relative,up)/(depth*tangent))*(rect.height/2);
     const dx=screenX-pointerX,dy=screenY-pointerY,distance=dx*dx+dy*dy;
     if(distance<bestDistance||(distance===bestDistance&&depth<bestDepth)){
-      best=index;bestDistance=distance;bestDepth=depth;
+      best=index;
+      bestDistance=distance;
+      bestDepth=depth;
     }
   }
   return best;
 }
 
 export function recomputeNormals(mesh){
-  const count=mesh.positions.length/3;
-  const normals=new Array(mesh.positions.length).fill(0);
-  for(let i=0;i<mesh.indices.length;i+=3){
-    const ia=mesh.indices[i],ib=mesh.indices[i+1],ic=mesh.indices[i+2];
-    const read=index=>mesh.positions.slice(index*3,index*3+3);
-    const a=read(ia),b=read(ib),c=read(ic);
-    const face=cross(b.map((value,axis)=>value-a[axis]),c.map((value,axis)=>value-a[axis]));
-    for(const index of [ia,ib,ic])for(let axis=0;axis<3;axis++)normals[index*3+axis]+=face[axis];
+  const positions=mesh.positions,indices=mesh.indices;
+  const normals=new Array(positions.length).fill(0);
+  for(let i=0;i<indices.length;i+=3){
+    const ia=indices[i]*3,ib=indices[i+1]*3,ic=indices[i+2]*3;
+    const abx=positions[ib]-positions[ia];
+    const aby=positions[ib+1]-positions[ia+1];
+    const abz=positions[ib+2]-positions[ia+2];
+    const acx=positions[ic]-positions[ia];
+    const acy=positions[ic+1]-positions[ia+1];
+    const acz=positions[ic+2]-positions[ia+2];
+    const nx=aby*acz-abz*acy;
+    const ny=abz*acx-abx*acz;
+    const nz=abx*acy-aby*acx;
+    for(const offset of [ia,ib,ic]){
+      normals[offset]+=nx;
+      normals[offset+1]+=ny;
+      normals[offset+2]+=nz;
+    }
   }
-  for(let index=0;index<count;index++){
-    const unit=norm(normals.slice(index*3,index*3+3));
-    const safe=unit.every(Number.isFinite)&&Math.hypot(...unit)>0?unit:[0,1,0];
-    normals.splice(index*3,3,...safe);
+  for(let i=0;i<normals.length;i+=3){
+    const length=Math.hypot(normals[i],normals[i+1],normals[i+2]);
+    if(length>1e-12){
+      normals[i]/=length;
+      normals[i+1]/=length;
+      normals[i+2]/=length;
+    }else{
+      normals[i]=0;
+      normals[i+1]=1;
+      normals[i+2]=0;
+    }
   }
   mesh.normals=normals;
   return mesh;
@@ -73,11 +103,24 @@ export function recomputeNormals(mesh){
 export function translateSelectedVertices(object,indices,delta){
   if(!object?.mesh?.positions)throw new Error("Select a mesh before moving vertices.");
   if(!Array.isArray(indices)||indices.length===0)throw new Error("Select at least one vertex.");
-  if(!Array.isArray(delta)||delta.length!==3||!delta.every(Number.isFinite))throw new Error("Vertex movement requires three finite values.");
-  const count=object.mesh.positions.length/3;
+  if(!Array.isArray(delta)||delta.length!==3||!delta.every(Number.isFinite)){
+    throw new Error("Vertex movement requires three finite values.");
+  }
+  const count=Math.min(object.mesh.positions.length/3,300000);
   const unique=[...new Set(indices)];
-  if(unique.some(index=>!Number.isInteger(index)||index<0||index>=count))throw new Error("Vertex selection contains an invalid index.");
-  for(const index of unique)for(let axis=0;axis<3;axis++)object.mesh.positions[index*3+axis]+=delta[axis];
+  if(unique.some(index=>!Number.isInteger(index)||index<0||index>=count)){
+    throw new Error("Vertex selection contains an invalid or unsupported index (editing is currently limited to the first 300,000 vertices).");
+  }
+  for(const index of unique){
+    for(let axis=0;axis<3;axis++){
+      if(!Number.isFinite(object.mesh.positions[index*3+axis]+delta[axis])){
+        throw new Error("Vertex movement would produce a non-finite position.");
+      }
+    }
+  }
+  for(const index of unique){
+    for(let axis=0;axis<3;axis++)object.mesh.positions[index*3+axis]+=delta[axis];
+  }
   recomputeNormals(object.mesh);
   return unique.length;
 }
