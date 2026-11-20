@@ -32,3 +32,85 @@ $('#toggle-grid').onclick=()=>{state.grid=!state.grid;$('#toggle-grid').classLis
 $('#add-key').onclick=addKey;$('#scrubber').oninput=e=>{state.time=+e.target.value;applyKeys();$('#time-readout').textContent=state.time.toFixed(2)+'s';};$('#play').onclick=()=>state.playing=true;$('#stop').onclick=()=>{state.playing=false;state.time=0;$('#scrubber').value=0;applyKeys();};
 let drag=false,px=0,py=0,canvas=$('#viewport');canvas.onpointerdown=e=>{drag=true;px=e.clientX;py=e.clientY;canvas.setPointerCapture(e.pointerId);};canvas.onpointermove=e=>{if(!drag)return;state.camera.yaw-=(e.clientX-px)*.008;state.camera.pitch=Math.max(-1.45,Math.min(1.45,state.camera.pitch+(e.clientY-py)*.008));px=e.clientX;py=e.clientY;};canvas.onpointerup=()=>drag=false;canvas.onpointercancel=()=>drag=false;canvas.onwheel=e=>{e.preventDefault();state.camera.distance=Math.max(1.5,Math.min(50,state.camera.distance+Math.sign(e.deltaY)*.35));};
 let last=performance.now();function frame(now){let dt=Math.min(.05,(now-last)/1000);last=now;if(state.playing){state.time+=dt;if(state.time>state.duration)state.time=0;$('#scrubber').value=state.time;$('#time-readout').textContent=state.time.toFixed(2)+'s';applyKeys();}renderer?.render(state.objects,state.camera,state.selected,state.grid);$('#object-count').textContent=state.objects.length;requestAnimationFrame(frame);}requestAnimationFrame(frame);
+
+
+// Cross-device controls: compact tablets and phones use a focused viewport
+// with accessible bottom-dock panels instead of squeezing desktop sidebars.
+const workspace = $('.workspace');
+const mobileDock = document.createElement('nav');
+mobileDock.className = 'mobile-dock';
+mobileDock.setAttribute('aria-label', 'Editor panels');
+mobileDock.innerHTML = [
+  ['scene', '▦', 'Scene'],
+  ['view', '◇', 'Viewport'],
+  ['inspector', '☷', 'Inspect'],
+  ['timeline', '◷', 'Timeline'],
+].map(([id, glyph, label]) =>
+  `<button type="button" data-mobile-panel="${id}" aria-label="${label}" aria-pressed="${id === 'view' ? 'true' : 'false'}"><span>${glyph}</span><small>${label}</small></button>`
+).join('');
+workspace.append(mobileDock);
+
+function setMobilePanel(panel) {
+  workspace.classList.remove('mobile-panel-scene', 'mobile-panel-inspector', 'mobile-panel-timeline');
+  if (panel && panel !== 'view') workspace.classList.add('mobile-panel-' + panel);
+  mobileDock.querySelectorAll('[data-mobile-panel]').forEach(button => {
+    const active = button.dataset.mobilePanel === (panel || 'view');
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+mobileDock.querySelectorAll('[data-mobile-panel]').forEach(button => {
+  button.addEventListener('click', () => setMobilePanel(button.dataset.mobilePanel));
+});
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape') setMobilePanel('view');
+});
+document.addEventListener('click', event => {
+  if (event.target.closest('[data-add], #run-code, #delete-object')) {
+    if (window.matchMedia('(max-width: 900px)').matches) setMobilePanel('view');
+  }
+});
+$('#obj-file').addEventListener('change', () => {
+  if (window.matchMedia('(max-width: 900px)').matches) setMobilePanel('view');
+});
+
+// Installable browser app. Core editing remains available without an account.
+const installButton = document.createElement('button');
+installButton.id = 'install-app';
+installButton.type = 'button';
+installButton.textContent = 'Install app';
+installButton.hidden = true;
+$('.top-actions').prepend(installButton);
+let installPrompt = null;
+const isIOSDevice = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  installPrompt = event;
+  installButton.hidden = false;
+});
+if (isIOSDevice && !window.matchMedia('(display-mode: standalone)').matches) {
+  installButton.hidden = false;
+  installButton.textContent = 'Install';
+}
+installButton.addEventListener('click', async () => {
+  if (installPrompt) {
+    installPrompt.prompt();
+    await installPrompt.userChoice;
+    installPrompt = null;
+    installButton.hidden = true;
+  } else if (isIOSDevice) {
+    error(new Error('On iPhone or iPad: open the browser Share menu, then choose “Add to Home Screen”.'));
+  }
+});
+window.addEventListener('appinstalled', () => {
+  installButton.hidden = true;
+  installPrompt = null;
+});
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {
+      // Offline support is progressive enhancement; editing still works online.
+    });
+  }, { once: true });
+}
