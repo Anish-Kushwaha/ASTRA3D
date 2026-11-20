@@ -275,24 +275,24 @@ export function extrudeFace(mesh,faceId,distance,topology=buildMeshTopology(mesh
   const face=topology.faces[faceId];
   if(!face)throw new Error("Select a valid face before extruding.");
   const polygon=facePolygon(mesh,face),normal=faceNormal(mesh,face);
-  const selectedTriangles=new Set(face.triangles),topMap=new Map(),capIndices=[];
+  const topMap=new Map(),capIndices=[],sideIndices=[],baseVertexCount=mesh.positions.length/3;
   for(const triangle of face.triangles){
     const ids=mesh.indices.slice(triangle*3,triangle*3+3);
     for(const id of ids){
       const key=vertexKey(mesh,id);
       if(!topMap.has(key)){
         const point=positionAt(mesh,id).map((value,axis)=>value+normal[axis]*distance);
-        topMap.set(key,appendVertex(mesh,point));
+        topMap.set(key,{id:baseVertexCount+topMap.size,point});
       }
-      capIndices.push(topMap.get(key));
+      capIndices.push(topMap.get(key).id);
     }
   }
-  const sideIndices=[];
   for(const edge of polygon.boundary){
-    const topA=topMap.get(edge.aKey),topB=topMap.get(edge.bKey);
+    const topA=topMap.get(edge.aKey).id,topB=topMap.get(edge.bKey).id;
     sideIndices.push(edge.a,edge.b,topB,edge.a,topB,topA);
   }
-  assertCapacity({positions:mesh.positions,indices:mesh.indices},topMap.size,capIndices.length+sideIndices.length);
+  assertCapacity(mesh,topMap.size,capIndices.length+sideIndices.length);
+  for(const value of topMap.values())mesh.positions.push(...value.point);
   mesh.indices.push(...capIndices,...sideIndices);
   recomputeNormals(mesh);
   return {verticesAdded:topMap.size,facesExtruded:1,trianglesAdded:face.triangles.length+polygon.boundary.length*2};
