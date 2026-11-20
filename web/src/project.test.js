@@ -89,3 +89,13 @@ test("autosave validates legacy top-level animation data before restoring", () =
   }));
   assert.equal(readAutosave(storage),null);
 });
+
+test("scene mesh preserves polygon face groups and rejects malformed metadata",()=>{
+  const grouped={...object,mesh:{...mesh,faceGroups:[7]}};
+  const scene=createSceneDocument([grouped]);
+  assert.deepEqual(scene.objects[0].mesh.faceGroups,[7]);
+  const restored=parseSceneDocument(JSON.stringify(scene));
+  assert.deepEqual(restored.objects[0].mesh.faceGroups,[7]);
+  assert.throws(()=>createSceneDocument([{...object,mesh:{...mesh,faceGroups:[]}}]),/face-group metadata/);
+  assert.throws(()=>createSceneDocument([{...object,mesh:{...mesh,faceGroups:[-1]}}]),/face-group metadata/);
+});
