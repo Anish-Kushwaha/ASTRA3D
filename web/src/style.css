@@ -7,3 +7,125 @@
 @media(max-width:900px){.workspace{grid-template-columns:190px minmax(250px,1fr)}.right{display:none}}@media(max-width:600px){.workspace{grid-template-columns:135px minmax(190px,1fr)}.project-name{display:none}.top{gap:10px;padding:0 8px}.primitive-grid{grid-template-columns:repeat(2,1fr)}.timeline{height:180px}#viewport{height:calc(100% - 218px)}.viewport-toolbar{padding:0 6px}.viewport-toolbar button{padding:4px;font-size:8px}}
 
 .workspace-tabs{height:32px;display:flex;align-items:stretch;padding:0 10px;background:#252525;border-bottom:1px solid #111;gap:2px;overflow-x:auto}.workspace-caption{display:flex;align-items:center;padding:0 10px 0 3px;color:#777;font:8px var(--mono);letter-spacing:1px}.workspace-tab{display:flex;align-items:center;padding:0 10px;color:#999;font-size:9px;white-space:nowrap;border-bottom:2px solid transparent}.workspace-tab.active{color:#eee;border-bottom-color:var(--accent);background:#303030}.workspace-spacer{flex:1}.version-label{align-self:center;color:#777;font:8px var(--mono);letter-spacing:.6px;white-space:nowrap}.status-bar{height:18px;display:flex;align-items:center;gap:16px;padding:0 9px;background:#181818;border-top:1px solid #111;color:#888;font:7px var(--mono);letter-spacing:.4px}.status-spacer{flex:1}.workspace{height:calc(100dvh - 98px)}@media(max-width:600px){.workspace-caption,.version-label{display:none}.workspace-tab{padding:0 8px}.status-bar{gap:7px;font-size:6px}}
+/* Browser-first, touch-friendly layout for tablets and phones. */
+.mobile-dock{display:none}
+@media(max-width:900px){
+  body{overflow:hidden}
+  .workspace{
+    display:block;
+    position:relative;
+    width:100%;
+    height:calc(100dvh - 80px);
+    overflow:hidden;
+  }
+  .center{
+    display:flex;
+    position:relative;
+    width:100%;
+    height:calc(100% - 56px);
+    min-height:0;
+  }
+  .center #viewport{
+    display:block;
+    flex:1 1 auto;
+    width:100%;
+    height:auto!important;
+    min-height:0;
+    touch-action:none;
+  }
+  .center .timeline{display:none}
+  .left,.right{
+    display:none;
+    position:absolute;
+    z-index:12;
+    left:8px;
+    right:8px;
+    top:8px;
+    bottom:64px;
+    width:auto;
+    max-height:none;
+    border:1px solid #565656;
+    border-radius:7px;
+    box-shadow:0 16px 48px #000b;
+  }
+  .workspace.mobile-panel-scene .left,
+  .workspace.mobile-panel-inspector .right{display:block}
+  .workspace.mobile-panel-timeline .center .timeline{
+    display:block;
+    position:absolute;
+    z-index:13;
+    left:8px;
+    right:8px;
+    bottom:64px;
+    width:auto;
+    height:192px;
+    border:1px solid #565656;
+    border-radius:7px;
+    box-shadow:0 16px 48px #000b;
+  }
+  .mobile-dock{
+    display:grid;
+    position:absolute;
+    z-index:20;
+    left:0;
+    right:0;
+    bottom:0;
+    height:56px;
+    grid-template-columns:repeat(4,1fr);
+    gap:4px;
+    padding:5px 8px max(5px, env(safe-area-inset-bottom));
+    background:#171717;
+    border-top:1px solid #484848;
+  }
+  .mobile-dock button{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:2px;
+    min-width:0;
+    min-height:42px;
+    padding:3px;
+    border:1px solid transparent;
+    border-radius:5px;
+    background:transparent;
+    color:#aaa;
+    touch-action:manipulation;
+  }
+  .mobile-dock button span{font-size:19px;line-height:20px}
+  .mobile-dock button small{font-size:9px;line-height:12px}
+  .mobile-dock button.active{
+    color:#ffd09c;
+    background:#4b3826;
+    border-color:#87592f;
+  }
+  .status-bar{display:none}
+  .workspace-tabs{gap:0;padding:0 5px}
+  .workspace-tab{padding:0 8px}
+  .workspace-caption,.version-label{display:none}
+  .top{padding:0 9px}
+  .project-name{font-size:8px}
+  .top-actions button{min-height:34px}
+  button{touch-action:manipulation}
+}
+@media(max-width:520px){
+  .top{height:48px;gap:8px}
+  .brand{font-size:12px;letter-spacing:.5px}
+  .brand b{width:22px;height:22px}
+  .project-name{display:none}
+  .top-actions{gap:5px}
+  .top-actions button{font-size:9px;padding:6px 8px}
+  .viewport-toolbar{height:36px;font-size:8px}
+  .viewport-help{top:43px;left:8px;font-size:7px}
+  .primitive-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .right{padding:0 12px}
+  .right input{min-height:36px;font-size:14px}
+  .triple input{font-size:12px}
+  #code-editor{font-size:12px;min-height:220px}
+  .timeline-head button{min-height:34px}
+  .timebar input{min-height:28px}
+  .mobile-dock{height:60px;padding-bottom:max(5px,env(safe-area-inset-bottom))}
+  .center{height:calc(100% - 60px)}
+  .left,.right{bottom:68px}
+  .workspace.mobile-panel-timeline .center .timeline{bottom:68px}
+}
