@@ -122,8 +122,8 @@ function assertEditableMesh(mesh){
   }
 }
 
-function assertCapacity(mesh,additionalVertices,additionalIndices){
-  if(mesh.positions.length/3+additionalVertices>2_000_000)throw new Error("This edit would exceed ASTRA3D's 2,000,000-vertex scene limit.");
+function assertCapacity(mesh,additionalVertices,additionalIndices,baseVertexCount=mesh.positions.length/3){
+  if(baseVertexCount+additionalVertices>2_000_000)throw new Error("This edit would exceed ASTRA3D's 2,000,000-vertex scene limit.");
   if(mesh.indices.length+additionalIndices>18_000_000)throw new Error("This edit would exceed the safe mesh index limit.");
 }
 
@@ -156,10 +156,12 @@ export function buildMeshTopology(mesh){
     const points=ids.map(index=>positionAt(mesh,index));
     const raw=cross(sub(points[1],points[0]),sub(points[2],points[0]));
     const normal=norm(raw);
-    triangles.push({ids,points,normal,plane:dot(normal,points[0])});
+    const triangleData={ids,points,normal,plane:dot(normal,points[0]),edgeKeys:[]};
+    triangles.push(triangleData);
     for(let side=0;side<3;side++){
       const a=ids[side],b=ids[(side+1)%3],aKey=pointKey(points[side]),bKey=pointKey(points[(side+1)%3]);
       const key=edgeKey(aKey,bKey);
+      triangleData.edgeKeys.push(key);
       if(!edgeUses.has(key))edgeUses.set(key,[]);
       edgeUses.get(key).push({triangle,a,b,aKey,bKey,key});
     }
@@ -185,9 +187,14 @@ export function buildMeshTopology(mesh){
   const faces=[],triangleFaceIds=new Array(triangleCount).fill(-1);
   for(const triangleIds of grouped.values()){
     const faceId=faces.length,set=new Set(triangleIds),boundaryUses=[];
-    for(const keyUses of edgeUses.values()){
-      const inside=keyUses.filter(use=>set.has(use.triangle));
-      if(inside.length===1)boundaryUses.push(inside[0]);
+    const visitedFaceEdges=new Set();
+    for(const triangleId of triangleIds){
+      for(const key of triangles[triangleId].edgeKeys){
+        if(visitedFaceEdges.has(key))continue;
+        visitedFaceEdges.add(key);
+        const inside=edgeUses.get(key).filter(use=>set.has(use.triangle));
+        if(inside.length===1)boundaryUses.push(inside[0]);
+      }
     }
     const boundary=boundaryUses.map(use=>({
       a:use.a,b:use.b,aKey:use.aKey,bKey:use.bKey,key:use.key
