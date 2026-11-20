@@ -124,7 +124,10 @@ export class SceneHistory {
 }
 
 export const AUTOSAVE_KEY = "astra3d.autosave.v2";
-export function readAutosave(storage = globalThis.localStorage) {
+function browserStorage() { try { return globalThis.localStorage; } catch { return null; } }
+
+export function readAutosave(storage) {
+  storage ??= browserStorage();
   try {
     const raw = storage?.getItem(AUTOSAVE_KEY);
     if (!raw) return null;
@@ -141,7 +144,8 @@ export function readAutosave(storage = globalThis.localStorage) {
   }
 }
 
-export function writeAutosave(snapshot, storage = globalThis.localStorage) {
+export function writeAutosave(snapshot, storage) {
+  storage ??= browserStorage();
   const payload = {
     format: "ASTRA3D Autosave",
     savedAt: Date.now(),
