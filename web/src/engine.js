@@ -26,3 +26,62 @@ export class AstraRenderer{
  resize(){let d=Math.min(devicePixelRatio||1,2),w=Math.max(1,Math.floor(this.canvas.clientWidth*d)),h=Math.max(1,Math.floor(this.canvas.clientHeight*d));if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;}this.gl.viewport(0,0,w,h);}
  render(objects,camera,selected,grid=true,wire=false){let g=this.gl;this.resize();g.clear(g.COLOR_BUFFER_BIT|g.DEPTH_BUFFER_BIT);g.useProgram(this.program);let eye=[camera.target[0]+Math.sin(camera.yaw)*Math.cos(camera.pitch)*camera.distance,camera.target[1]+Math.sin(camera.pitch)*camera.distance,camera.target[2]+Math.cos(camera.yaw)*Math.cos(camera.pitch)*camera.distance],view=M.view(eye,camera.target,[0,1,0]),proj=M.perspective(camera.fov*Math.PI/180,this.canvas.width/this.canvas.height,.05,1000);g.uniform3fv(this.loc.light,new Float32Array([-.5,-1,-.4]));g.uniform3fv(this.loc.camera,new Float32Array(eye));if(grid){g.disable(g.CULL_FACE);g.uniform1i(this.loc.unlit,1);g.uniform3fv(this.loc.color,new Float32Array([.14,.2,.28]));let id=new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);g.uniformMatrix4fv(this.loc.model,false,id);g.uniformMatrix4fv(this.loc.mvp,false,M.mul(proj,M.mul(view,id)));g.bindVertexArray(this.grid.vao);g.drawElements(g.LINES,this.grid.count,g.UNSIGNED_INT,0);g.enable(g.CULL_FACE);}for(let o of objects){let model=M.model(o.position,o.rotation,o.scale),mvp=M.mul(proj,M.mul(view,model)),gpu=this.get(o.mesh);g.uniformMatrix4fv(this.loc.model,false,model);g.uniformMatrix4fv(this.loc.mvp,false,mvp);g.uniform3fv(this.loc.color,new Float32Array(o.color));g.uniform1i(this.loc.unlit,0);g.bindVertexArray(gpu.vao);if(wire){g.polygonMode?.(g.FRONT_AND_BACK,g.LINE);}g.drawElements(gpu.mode,gpu.count,g.UNSIGNED_INT,0);if(wire)g.polygonMode?.(g.FRONT_AND_BACK,g.FILL);if(o.id===selected){g.disable(g.CULL_FACE);g.uniform1i(this.loc.unlit,1);g.uniform3fv(this.loc.color,new Float32Array([.15,.75,1]));g.lineWidth(2);g.enable(g.POLYGON_OFFSET_LINE);g.polygonOffset(-1,-1);g.drawElements(g.LINES,0,g.UNSIGNED_INT,0);g.disable(g.POLYGON_OFFSET_LINE);g.enable(g.CULL_FACE);}}g.bindVertexArray(null);}
 }
+
+export function pickObject(objects, camera, canvas, clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  const x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  const y = 1 - ((clientY - rect.top) / rect.height) * 2;
+  const eye = [
+    camera.target[0] + Math.sin(camera.yaw) * Math.cos(camera.pitch) * camera.distance,
+    camera.target[1] + Math.sin(camera.pitch) * camera.distance,
+    camera.target[2] + Math.cos(camera.yaw) * Math.cos(camera.pitch) * camera.distance
+  ];
+  const forward = norm(sub(camera.target, eye));
+  const right = norm(cross(forward, [0, 1, 0]));
+  const up = cross(right, forward);
+  const tangent = Math.tan(camera.fov * Math.PI / 360);
+  const aspect = rect.width / rect.height;
+  const direction = norm([
+    forward[0] + right[0] * x * tangent * aspect + up[0] * y * tangent,
+    forward[1] + right[1] * x * tangent * aspect + up[1] * y * tangent,
+    forward[2] + right[2] * x * tangent * aspect + up[2] * y * tangent
+  ]);
+  let closest = Infinity;
+  let selected = null;
+  let tested = 0;
+  const maxTriangles = 300000;
+  for (const object of objects) {
+    const mesh = object.mesh;
+    if (!mesh?.positions || !mesh?.indices) continue;
+    const model = M.model(object.position, object.rotation, object.scale);
+    const worldVertex = index => {
+      const offset = index * 3;
+      const vx = mesh.positions[offset], vy = mesh.positions[offset + 1], vz = mesh.positions[offset + 2];
+      return [
+        model[0] * vx + model[4] * vy + model[8] * vz + model[12],
+        model[1] * vx + model[5] * vy + model[9] * vz + model[13],
+        model[2] * vx + model[6] * vy + model[10] * vz + model[14]
+      ];
+    };
+    const indices = mesh.indices;
+    for (let i = 0; i + 2 < indices.length && tested < maxTriangles; i += 3, tested++) {
+      const a = worldVertex(indices[i]), b = worldVertex(indices[i + 1]), c = worldVertex(indices[i + 2]);
+      const edge1 = sub(b, a), edge2 = sub(c, a);
+      const h = cross(direction, edge2), determinant = dot(edge1, h);
+      if (Math.abs(determinant) < 1e-8) continue;
+      const inverse = 1 / determinant, offset = sub(eye, a);
+      const u = inverse * dot(offset, h);
+      if (u < 0 || u > 1) continue;
+      const q = cross(offset, edge1), v = inverse * dot(direction, q);
+      if (v < 0 || u + v > 1) continue;
+      const distance = inverse * dot(edge2, q);
+      if (distance > 0 && distance < closest) {
+        closest = distance;
+        selected = object.id;
+      }
+    }
+    if (tested >= maxTriangles) break;
+  }
+  return selected;
+}
