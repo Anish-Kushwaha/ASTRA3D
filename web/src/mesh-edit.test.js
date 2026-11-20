@@ -10,12 +10,12 @@ const object={
 };
 
 test("vertex picker selects the closest projected vertex within the hit radius",()=>{
-  assert.equal(pickVertex(object,camera,canvas,200,200),2);
+  assert.equal(pickVertex(object,camera,canvas,200,118),2);
   assert.equal(pickVertex(object,camera,canvas,0,0),null);
 });
 test("vertex picker respects object transforms",()=>{
   const moved={...object,position:[1,0,0]};
-  assert.equal(pickVertex(moved,camera,canvas,258,200),1);
+  assert.equal(pickVertex(moved,camera,canvas,364,282),1);
 });
 test("vertex translation changes only selected local vertices and recalculates normals",()=>{
   const copy=structuredClone(object);
