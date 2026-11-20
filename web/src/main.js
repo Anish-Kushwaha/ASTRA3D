@@ -20,8 +20,8 @@ function rebuildTopology(force=false){
  const object=state.objects.find(item=>item.id===state.selected);
  if(!object||!['edge','face'].includes(state.editMode)){state.topology=null;return;}
  if(force||state.topologyMesh!==object.mesh){
-  state.topology=buildMeshTopology(object.mesh);
-  state.topologyMesh=object.mesh;
+  try{state.topology=buildMeshTopology(object.mesh);state.topologyMesh=object.mesh;}
+  catch(e){state.topology=null;error(e);}
  }
 }
 function clearElementSelection(){
@@ -194,20 +194,54 @@ canvas.onpointermove=e=>{
 const releasePointer=(e,allowPick=false)=>{
   const start=pointerStarts.get(e.pointerId);
   if(allowPick&&activePointers.size===1&&start&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6){
-    if(state.editMode==='vertex'){
-      const hit=pickObject(state.objects,state.camera,canvas,e.clientX,e.clientY);
-      if(hit&&hit!==state.selected){state.selected=hit;state.selectedVertices=[];sync();}
-      const object=state.objects.find(item=>item.id===state.selected);
-      const vertex=object?pickVertex(object,state.camera,canvas,e.clientX,e.clientY):null;
-      if(vertex!==null){
-        if(e.shiftKey||state.multiSelect){state.selectedVertices=state.selectedVertices.includes(vertex)?state.selectedVertices.filter(index=>index!==vertex):[...state.selectedVertices,vertex];}
-        else state.selectedVertices=[vertex];
-        sync();
-      }else if(!hit&&!e.shiftKey&&!state.multiSelect){state.selected=null;state.selectedVertices=[];sync();}
-    }else{
+    if(state.editMode==='object'){
       state.selected=pickObject(state.objects,state.camera,canvas,e.clientX,e.clientY);
-      state.selectedVertices=[];
+      clearElementSelection();
+      state.topology=null;
       sync();
+    }else{
+      const hit=pickObject(state.objects,state.camera,canvas,e.clientX,e.clientY);
+      if(hit&&hit!==state.selected){
+        state.selected=hit;
+        clearElementSelection();
+        state.topology=null;
+        sync();
+      }
+      const object=state.objects.find(item=>item.id===state.selected);
+      if(state.editMode==='vertex'){
+        const vertex=object?pickVertex(object,state.camera,canvas,e.clientX,e.clientY):null;
+        if(vertex!==null){
+          if(e.shiftKey||state.multiSelect){
+            state.selectedVertices=state.selectedVertices.includes(vertex)?state.selectedVertices.filter(index=>index!==vertex):[...state.selectedVertices,vertex];
+          }else state.selectedVertices=[vertex];
+          sync();
+        }else if(!hit&&!e.shiftKey&&!state.multiSelect){
+          state.selected=null;clearElementSelection();state.topology=null;sync();
+        }
+      }else if(object){
+        let element=null;
+        try{
+          rebuildTopology();
+          if(state.editMode==='edge'){
+            element=pickEdge(object,state.topology,state.camera,canvas,e.clientX,e.clientY);
+            if(element!==null){
+              if(e.shiftKey||state.multiSelect){
+                state.selectedEdges=state.selectedEdges.includes(element)?state.selectedEdges.filter(index=>index!==element):[...state.selectedEdges,element];
+              }else state.selectedEdges=[element];
+            }else if(!e.shiftKey&&!state.multiSelect)state.selectedEdges=[];
+          }else if(state.editMode==='face'){
+            element=pickFace(object,state.topology,state.camera,canvas,e.clientX,e.clientY);
+            if(element!==null){
+              if(e.shiftKey||state.multiSelect){
+                state.selectedFaces=state.selectedFaces.includes(element)?state.selectedFaces.filter(index=>index!==element):[...state.selectedFaces,element];
+              }else state.selectedFaces=[element];
+            }else if(!e.shiftKey&&!state.multiSelect)state.selectedFaces=[];
+          }
+        }catch(errorValue){error(errorValue);}
+        sync();
+      }else if(!hit&&!e.shiftKey&&!state.multiSelect){
+        state.selected=null;clearElementSelection();state.topology=null;sync();
+      }
     }
   }
   pointerStarts.delete(e.pointerId);
