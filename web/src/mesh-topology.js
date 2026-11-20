@@ -404,13 +404,12 @@ export function loopCutFromEdge(mesh,edgeId,topology=buildMeshTopology(mesh),rat
   }
   const added=[],addedGroups=[];
   let nextFaceGroup=topology.triangleFaceIds.reduce((maximum,value)=>Math.max(maximum,value),-1)+1;
-  for(const polygons of replacement.values())for(const polygon of polygons){
-    for(const quad of polygons){
-      appendQuad(added,...quad);
+  for(const polygons of replacement.values()){
+    for(const polygon of polygons){
+      appendQuad(added,...polygon);
       const faceGroup=nextFaceGroup++;
       addedGroups.push(faceGroup,faceGroup);
     }
-    break;
   }
   assertCapacity(mesh,edgePoints.size,added.length);
   for(const point of edgePoints.values())mesh.positions.push(...point.point);
