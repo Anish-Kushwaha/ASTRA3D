@@ -308,7 +308,8 @@ export function insetFace(mesh,faceId,amount=.15,topology=buildMeshTopology(mesh
   const center=[0,0,0];
   for(const point of polygon.points)for(let axis=0;axis<3;axis++)center[axis]+=point[axis]/polygon.points.length;
   const inner=polygon.points.map(point=>point.map((value,axis)=>center[axis]+(value-center[axis])*(1-amount)));
-  const innerIds=inner.map(point=>appendVertex(mesh,point));
+  const baseVertexCount=mesh.positions.length/3;
+  const innerIds=inner.map((_,index)=>baseVertexCount+index);
   const faceSet=new Set(face.triangles),kept=[];
   for(let triangle=0;triangle<mesh.indices.length/3;triangle++){
     if(!faceSet.has(triangle))kept.push(...mesh.indices.slice(triangle*3,triangle*3+3));
@@ -319,7 +320,8 @@ export function insetFace(mesh,faceId,amount=.15,topology=buildMeshTopology(mesh
     appendQuad(added,polygon.vertices[i],polygon.vertices[next],innerIds[next],innerIds[i]);
   }
   for(let i=1;i<innerIds.length-1;i++)added.push(innerIds[0],innerIds[i],innerIds[i+1]);
-  assertCapacity({positions:mesh.positions,indices:kept},innerIds.length,added.length);
+  assertCapacity(mesh,innerIds.length,added.length);
+  for(const point of inner)mesh.positions.push(...point);
   mesh.indices=[...kept,...added];
   recomputeNormals(mesh);
   return {verticesAdded:innerIds.length,facesInset:1,trianglesAdded:added.length/3};
