@@ -334,20 +334,17 @@ export function loopCutFromEdge(mesh,edgeId,topology=buildMeshTopology(mesh),rat
   if(!startEdge)throw new Error("Select a valid edge before adding a loop cut.");
   let currentEdge=startEdge,currentFaceId=startEdge.faces[0];
   if(currentFaceId===undefined)throw new Error("The selected edge is not attached to a face.");
-  const cuts=[],visitedFaces=new Set(),visitedEdges=new Set();
-  const edgePoints=new Map();
-  const edgePoint=(edge)=>{
-    if(edgePoints.has(edge.key))return edgePoints.get(edge.key);
+  const cuts=[],visitedFaces=new Set(),visitedEdges=new Set(),edgePoints=new Map();
+  const edgePoint=edge=>{
+    if(edgePoints.has(edge.key))return edgePoints.get(edge.key).id;
     const canonical=edge.aKey<edge.bKey;
-    const from=positionAt(mesh,canonical?edge.a:edge.b);
-    const to=positionAt(mesh,canonical?edge.b:edge.a);
+    const from=positionAt(mesh,canonical?edge.a:edge.b),to=positionAt(mesh,canonical?edge.b:edge.a);
     const t=canonical?ratio:1-ratio;
     const point=from.map((value,axis)=>value+(to[axis]-value)*t);
-    const id=appendVertex(mesh,point);
-    edgePoints.set(edge.key,id);
+    const id=mesh.positions.length/3+edgePoints.size;
+    edgePoints.set(edge.key,{id,point});
     return id;
   };
-
   while(currentFaceId!==undefined&&!visitedFaces.has(currentFaceId)){
     const face=topology.faces[currentFaceId];
     if(!face)break;
@@ -356,7 +353,7 @@ export function loopCutFromEdge(mesh,edgeId,topology=buildMeshTopology(mesh),rat
     const edgeIndex=polygon.boundary.findIndex(edge=>edge.key===currentEdge.key);
     if(edgeIndex<0)throw new Error("The edge is not part of the adjacent face boundary.");
     const opposite=polygon.boundary[(edgeIndex+2)%4];
-    cuts.push({faceId:currentFaceId,face,polygon,currentEdge:polygon.boundary[edgeIndex],opposite});
+    cuts.push({faceId:currentFaceId,polygon,currentEdge:polygon.boundary[edgeIndex],opposite});
     visitedFaces.add(currentFaceId);
     visitedEdges.add(currentEdge.key);
     if(visitedEdges.has(opposite.key))break;
@@ -368,29 +365,24 @@ export function loopCutFromEdge(mesh,edgeId,topology=buildMeshTopology(mesh),rat
     currentFaceId=nextFace;
   }
   if(!cuts.length)throw new Error("No quad faces were found along this edge loop.");
-
   const replacement=new Map();
   for(const cut of cuts){
-    const boundaries=cut.polygon.boundary,i=cut.polygon.boundary.findIndex(edge=>edge.key===cut.currentEdge.key);
-    const vertices=cut.polygon.vertices;
-    const next=(i+1)%4,opposite=(i+2)%4,last=(i+3)%4;
+    const i=cut.polygon.boundary.findIndex(edge=>edge.key===cut.currentEdge.key);
+    const vertices=cut.polygon.vertices,next=(i+1)%4,opposite=(i+2)%4,last=(i+3)%4;
     const startPoint=edgePoint(cut.currentEdge),endPoint=edgePoint(cut.opposite);
     replacement.set(cut.faceId,[
       [vertices[next],vertices[opposite],endPoint,startPoint],
       [startPoint,endPoint,vertices[last],vertices[i]]
     ]);
   }
-
   const kept=[];
   for(let triangle=0;triangle<mesh.indices.length/3;triangle++){
-    const faceId=topology.triangleFaceIds[triangle];
-    if(!replacement.has(faceId))kept.push(...mesh.indices.slice(triangle*3,triangle*3+3));
+    if(!replacement.has(topology.triangleFaceIds[triangle]))kept.push(...mesh.indices.slice(triangle*3,triangle*3+3));
   }
   const added=[];
-  for(const polygons of replacement.values()){
-    for(const polygon of polygons)appendQuad(added,...polygon);
-  }
-  assertCapacity({positions:mesh.positions,indices:kept},edgePoints.size,added.length);
+  for(const polygons of replacement.values())for(const polygon of polygons)appendQuad(added,...polygon);
+  assertCapacity(mesh,edgePoints.size,added.length);
+  for(const point of edgePoints.values())mesh.positions.push(...point.point);
   mesh.indices=[...kept,...added];
   recomputeNormals(mesh);
   return {facesCut:cuts.length,verticesAdded:edgePoints.size,quadsCreated:cuts.length*2};
