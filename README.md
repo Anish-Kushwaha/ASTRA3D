@@ -29,7 +29,7 @@ Create and inspect 3D projects directly in a modern browser on phones, tablets, 
 - Transform and base-color inspector with validation.
 - 100-step undo/redo history and keyboard shortcuts (Ctrl/Cmd+Z, Shift+Z, Y).
 - Local browser autosave and recovery, independent of cloud sign-in.
-- Versioned ASTRA3D Scene JSON v2 with bounded, validated geometry imports.
+- Versioned ASTRA3D Scene JSON v2 with bounded geometry validation and animation keyframe round-tripping.
 - OBJ triangle-mesh import.
 - ASTRA3D JSON scene import/export.
 - Restricted ASTRA3D script editor that builds primitive scenes without evaluating arbitrary JavaScript.
