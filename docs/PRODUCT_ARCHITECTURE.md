@@ -41,7 +41,7 @@ The optional desktop edition is based on Blender and lives in a separate GPL-3.0
 
 ## Cross-device project formats
 - Current browser format: ASTRA3D JSON scene prototype with object geometry, transforms and base colors.
-- Target browser-native format: versioned .astra.json document with schema validation and migrations.
+- Target browser-native format: versioned .astra.json document with schema validation, migrations and transform-keyframe round-tripping.
 - Target interchange: glTF 2.0 / GLB for supported geometry, hierarchy, materials, textures and animation.
 - Desktop-native format: .blend. Conversion between .blend and glTF/GLB is limited to data representable in the interchange format.
 
