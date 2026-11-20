@@ -36,10 +36,19 @@ function validateMesh(mesh, index) {
       !indices.every(value => Number.isInteger(value) && value >= 0 && value < positions.length / 3)) {
     throw new Error(`Object ${index + 1} has invalid triangle indices.`);
   }
+  let faceGroups;
+  if (mesh.faceGroups !== undefined) {
+    if (!Array.isArray(mesh.faceGroups) || mesh.faceGroups.length !== indices.length / 3 ||
+        !mesh.faceGroups.every(value => Number.isInteger(value) && value >= 0 && value <= 10_000_000)) {
+      throw new Error(`Object ${index + 1} has invalid polygon face-group metadata.`);
+    }
+    faceGroups = mesh.faceGroups.slice();
+  }
   return {
     positions: positions.slice(),
     normals: normals.slice(),
-    indices: indices.slice()
+    indices: indices.slice(),
+    ...(faceGroups ? { faceGroups } : {})
   };
 }
 
