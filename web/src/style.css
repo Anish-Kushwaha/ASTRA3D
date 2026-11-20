@@ -129,3 +129,17 @@
   .left,.right{bottom:68px}
   .workspace.mobile-panel-timeline .center .timeline{bottom:68px}
 }
+
+/* Vertex-edit controls use the same restrained workbench treatment. */
+.viewport-controls{display:flex;align-items:center;gap:4px;min-width:0}
+.edit-mode-switch{display:flex;align-items:center;gap:2px;margin-right:4px;padding:2px;background:#292929;border:1px solid #505050;border-radius:3px}
+.edit-mode-switch button{padding:5px 7px;font-size:8px;background:transparent;border-color:transparent;color:#aaa;white-space:nowrap}
+.edit-mode-switch button.active{background:#5b4937;border-color:#94663a;color:#f4c38d}
+#move-vertices{width:100%;margin:4px 0}
+#clear-vertex-selection{margin-top:5px}
+@media(max-width:600px){
+  .viewport-controls{gap:2px}
+  .edit-mode-switch{margin-right:1px}
+  .edit-mode-switch button{padding:5px 5px;font-size:7px}
+  .viewport-toolbar button{padding:4px 5px}
+}
