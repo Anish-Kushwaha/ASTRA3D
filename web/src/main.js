@@ -1,53 +1,140 @@
 import './style.css';
 import {AstraRenderer,MeshFactory,parseOBJ,pickObject} from './engine.js';
 import {pickVertex,translateSelectedVertices} from './mesh-edit.js';
+import {buildMeshTopology,pickEdge,pickFace,extrudeFace,insetFace,loopCutFromEdge} from './mesh-topology.js';
 import {SceneHistory,parseSceneDocument,createSceneDocument,readAutosave,writeAutosave} from './project.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],uid=()=>crypto.randomUUID();
-const state={objects:[],selected:null,mode:'visual',editMode:'object',multiSelect:false,selectedVertices:[],grid:true,playing:false,time:0,duration:10,keys:{},camera:{target:[0,0,0],yaw:.65,pitch:.38,distance:7,fov:52}};
+const state={objects:[],selected:null,mode:'visual',editMode:'object',multiSelect:false,selectedVertices:[],selectedEdges:[],selectedFaces:[],topology:null,grid:true,playing:false,time:0,duration:10,keys:{},camera:{target:[0,0,0],yaw:.65,pitch:.38,distance:7,fov:52}};
 const escapeHTML=value=>String(value).replace(/[&<>\"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[ch])),hex=s=>s.match(/[a-f0-9]{2}/gi).map(x=>parseInt(x,16)/255),color=i=>['#63b7ed','#6ed6b0','#d89cf3','#f2b66d','#e9829a'][i%5];
 const history=new SceneHistory(100);let autosaveTimer=null;
-function captureSnapshot(){return{objects:state.objects,keys:state.keys,selected:state.selected,editMode:state.editMode,selectedVertices:state.selectedVertices};}
+function captureSnapshot(){return{objects:state.objects,keys:state.keys,selected:state.selected,editMode:state.editMode,multiSelect:state.multiSelect,selectedVertices:state.selectedVertices,selectedEdges:state.selectedEdges,selectedFaces:state.selectedFaces};}
 function updateHistoryControls(){const undoButton=$('#undo'),redoButton=$('#redo');if(undoButton)undoButton.disabled=!history.canUndo;if(redoButton)redoButton.disabled=!history.canRedo;}
 function queueAutosave(){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>{if(!writeAutosave(captureSnapshot()))error(Error('Autosave could not write to this browser storage. Export a backup to keep your work safe.'));},500);}
 function commitEdit(){history.push(captureSnapshot());updateHistoryControls();queueAutosave();}
-function restoreSnapshot(snapshot){state.objects=snapshot.objects;state.keys=snapshot.keys||{};state.selected=snapshot.selected;state.editMode=snapshot.editMode||'object';state.selectedVertices=snapshot.selectedVertices||[];applyKeys();sync();setEditMode(state.editMode);updateHistoryControls();queueAutosave();}
+function restoreSnapshot(snapshot){state.objects=snapshot.objects;state.keys=snapshot.keys||{};state.selected=snapshot.selected;state.editMode=snapshot.editMode||'object';state.multiSelect=!!snapshot.multiSelect;state.selectedVertices=snapshot.selectedVertices||[];state.selectedEdges=snapshot.selectedEdges||[];state.selectedFaces=snapshot.selectedFaces||[];state.topology=null;applyKeys();sync();setEditMode(state.editMode);updateHistoryControls();queueAutosave();}
 function undo(){const snapshot=history.undo();if(snapshot)restoreSnapshot(snapshot);updateHistoryControls();}
 function redo(){const snapshot=history.redo();if(snapshot)restoreSnapshot(snapshot);updateHistoryControls();}
 function add(type,name){let o={id:uid(),name:name||type[0].toUpperCase()+type.slice(1),type,mesh:MeshFactory[type](),position:[(state.objects.length%3-1)*1.8,0,0],rotation:[0,0,0],scale:[1,1,1],color:hex(color(state.objects.length))};state.objects.push(o);state.selected=o.id;state.selectedVertices=[];sync();commitEdit();}
 function error(e){$('#toast').textContent=e.message||String(e);$('#toast').classList.add('show');setTimeout(()=>$('#toast').classList.remove('show'),3500);}
-function sync(){let list=$('#object-list');list.innerHTML=state.objects.map(o=>`<button class="object-row ${o.id===state.selected?'active':''}" data-id="${o.id}"><i style="background:#${o.color.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('')}"></i><span>${escapeHTML(o.name)}</span><small>${escapeHTML(o.type)}</small></button>`).join('')||'<p class="empty">No objects yet. Add a primitive to begin.</p>';$('[data-id]').forEach(b=>b.onclick=()=>{state.selected=b.dataset.id;state.selectedVertices=[];sync();});inspector();$('#object-count').textContent=state.objects.length;$('#timeline-label').textContent=state.objects.find(o=>o.id===state.selected)?.name||'No selection';renderKeys();}
+function rebuildTopology(force=false){
+ const object=state.objects.find(item=>item.id===state.selected);
+ if(!object||!['edge','face'].includes(state.editMode)){state.topology=null;return;}
+ if(force||state.topologyMesh!==object.mesh){
+  state.topology=buildMeshTopology(object.mesh);
+  state.topologyMesh=object.mesh;
+ }
+}
+function clearElementSelection(){
+ state.selectedVertices=[];
+ state.selectedEdges=[];
+ state.selectedFaces=[];
+}
+function sync(){
+ let list=$('#object-list');
+ list.innerHTML=state.objects.map(o=>\`<button class="object-row \${o.id===state.selected?'active':''}" data-id="\${o.id}"><i style="background:#\${o.color.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('')}"></i><span>\${escapeHTML(o.name)}</span><small>\${escapeHTML(o.type)}</small></button>\`).join('')||'<p class="empty">No objects yet. Add a primitive to begin.</p>';
+ $$('[data-id]').forEach(b=>b.onclick=()=>{state.selected=b.dataset.id;clearElementSelection();state.topology=null;sync();});
+ rebuildTopology();
+ inspector();
+ $('#object-count').textContent=state.objects.length;
+ $('#timeline-label').textContent=state.objects.find(o=>o.id===state.selected)?.name||'No selection';
+ renderKeys();
+}
 function inspector(){
  let o=state.objects.find(x=>x.id===state.selected),box=$('#inspector');
  if(state.editMode==='vertex'){
   if(!o){box.innerHTML='<p class="empty">Select a mesh object, then switch to Vertex mode.</p>';return;}
   const selection=state.selectedVertices.filter(index=>Number.isInteger(index)&&index>=0&&index<o.mesh.positions.length/3);
-  if(!selection.length){box.innerHTML='<div class="field-head"><strong>VERTEX EDIT</strong><span>'+ (o.mesh.positions.length/3) +' VERTICES</span></div><p class="empty">Tap or click a vertex in the viewport. Hold Shift to add or remove vertices from the selection.</p><p class="hint">Selected vertex positions are edited in object-local coordinates.</p>';return;}
-  box.innerHTML=`<div class="field-head"><strong>${selection.length} VERTEX${selection.length===1?'':'ES'} SELECTED</strong><span>${o.mesh.positions.length/3} TOTAL</span></div><p class="hint">Translate the selected vertices in local X, Y and Z. Values are offsets, not absolute coordinates.</p><fieldset><legend>MOVE SELECTION · LOCAL SPACE</legend><div class="triple"><label>ΔX<input id="vertex-dx" type="number" step="0.1" value="0"></label><label>ΔY<input id="vertex-dy" type="number" step="0.1" value="0"></label><label>ΔZ<input id="vertex-dz" type="number" step="0.1" value="0"></label></div></fieldset><button id="move-vertices" class="primary">Move selected vertices</button><button id="clear-vertex-selection" class="danger">Clear vertex selection</button>`;
+  if(!selection.length){box.innerHTML='<div class="field-head"><strong>VERTEX EDIT</strong><span>'+(o.mesh.positions.length/3)+' VERTICES</span></div><p class="empty">Tap or click a vertex in the viewport. Hold Shift or enable Multi to add/remove vertices.</p><p class="hint">Vertex movement uses object-local coordinates.</p>';return;}
+  box.innerHTML=\`<div class="field-head"><strong>\${selection.length} VERTEX\${selection.length===1?'':'ES'} SELECTED</strong><span>\${o.mesh.positions.length/3} TOTAL</span></div><p class="hint">Translate the selected vertices in local X, Y and Z.</p><fieldset><legend>MOVE SELECTION · LOCAL SPACE</legend><div class="triple"><label>ΔX<input id="vertex-dx" type="number" step="0.1" value="0"></label><label>ΔY<input id="vertex-dy" type="number" step="0.1" value="0"></label><label>ΔZ<input id="vertex-dz" type="number" step="0.1" value="0"></label></div></fieldset><button id="move-vertices" class="primary">Move selected vertices</button><button id="clear-vertex-selection" class="danger">Clear vertex selection</button>\`;
   $('#move-vertices').onclick=()=>{try{const delta=['x','y','z'].map(axis=>Number($('#vertex-d'+axis).value));translateSelectedVertices(o,selection,delta);renderer?.invalidate(o.mesh);commitEdit();sync();$('#toast').textContent='Moved '+selection.length+' selected vertices.';$('#toast').classList.add('show');setTimeout(()=>$('#toast').classList.remove('show'),2500);}catch(e){error(e);}};
   $('#clear-vertex-selection').onclick=()=>{state.selectedVertices=[];sync();};
   return;
  }
+ if(state.editMode==='edge'){
+  if(!o){box.innerHTML='<p class="empty">Select a mesh, then switch to Edge mode.</p>';return;}
+  const selected=state.selectedEdges.filter(index=>Number.isInteger(index)&&index>=0&&(state.topology?.edges.length||0)>index);
+  if(!selected.length){box.innerHTML='<div class="field-head"><strong>EDGE EDIT</strong><span>'+(state.topology?.edges.length||0)+' EDGES</span></div><p class="empty">Tap an edge in the viewport. Use Multi or Shift to select multiple edges.</p><p class="hint">Loop Cut follows connected quad faces from one selected edge.</p>';return;}
+  box.innerHTML=\`<div class="field-head"><strong>\${selected.length} EDGE\${selected.length===1?'':'S'} SELECTED</strong><span>\${state.topology.edges.length} TOTAL</span></div><p class="hint">Loop Cut inserts a split through the connected quad-face edge loop. Select one starting edge.</p><fieldset><legend>LOOP CUT POSITION</legend><label>Position<input id="loop-ratio" type="number" min="0.05" max="0.95" step="0.05" value="0.50"></label></fieldset><button id="loop-cut" class="primary">Loop Cut</button><button id="clear-edge-selection" class="danger">Clear edge selection</button>\`;
+  $('#loop-cut').onclick=()=>{if(selected.length!==1)return error(Error('Select exactly one starting edge for Loop Cut.'));const ratio=Number($('#loop-ratio').value);performMeshOperation((mesh,topology)=>loopCutFromEdge(mesh,selected[0],topology,ratio),'Loop Cut');};
+  $('#clear-edge-selection').onclick=()=>{state.selectedEdges=[];sync();};
+  return;
+ }
+ if(state.editMode==='face'){
+  if(!o){box.innerHTML='<p class="empty">Select a mesh, then switch to Face mode.</p>';return;}
+  const selected=state.selectedFaces.filter(index=>Number.isInteger(index)&&index>=0&&(state.topology?.faces.length||0)>index);
+  if(!selected.length){box.innerHTML='<div class="field-head"><strong>FACE EDIT</strong><span>'+(state.topology?.faces.length||0)+' FACES</span></div><p class="empty">Tap a polygon face in the viewport. Use Multi or Shift to select faces.</p><p class="hint">Extrude and Inset currently operate on one convex polygon face at a time.</p>';return;}
+  box.innerHTML=\`<div class="field-head"><strong>\${selected.length} FACE\${selected.length===1?'':'S'} SELECTED</strong><span>\${state.topology.faces.length} TOTAL</span></div><fieldset><legend>EXTRUDE DISTANCE</legend><label>Distance<input id="extrude-distance" type="number" step="0.1" value="0.5"></label></fieldset><button id="extrude-face" class="primary">Extrude selected face</button><fieldset><legend>INSET AMOUNT</legend><label>Inset ratio<input id="inset-amount" type="number" min="0.01" max="0.49" step="0.01" value="0.15"></label></fieldset><button id="inset-face">Inset selected face</button><button id="clear-face-selection" class="danger">Clear face selection</button>\`;
+  $('#extrude-face').onclick=()=>{if(selected.length!==1)return error(Error('Select exactly one face for extrusion.'));performMeshOperation((mesh,topology)=>extrudeFace(mesh,selected[0],Number($('#extrude-distance').value),topology),'Extrude');};
+  $('#inset-face').onclick=()=>{if(selected.length!==1)return error(Error('Select exactly one face for inset.'));performMeshOperation((mesh,topology)=>insetFace(mesh,selected[0],Number($('#inset-amount').value),topology),'Inset');};
+  $('#clear-face-selection').onclick=()=>{state.selectedFaces=[];sync();};
+  return;
+ }
  if(!o){box.innerHTML='<p class="empty">Select an object to inspect its properties.</p>';return;}
- box.innerHTML=`<div class="field-head"><strong>${escapeHTML(o.name)}</strong><span>${escapeHTML(o.type.toUpperCase())}</span></div><label>Name<input id="obj-name" value="${escapeHTML(o.name)}"></label><label>Base color<input id="obj-color" type="color" value="#${o.color.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('')}"></label>${['position','rotation','scale'].map(k=>`<fieldset><legend>${k}</legend><div class="triple">${['X','Y','Z'].map((a,i)=>`<label>${a}<input type="number" step="${k==='rotation'?'.05':'.1'}" ${k==='scale'?'min="0.001"':''} data-prop="${k}" data-i="${i}" value="${o[k][i].toFixed(2)}"></label>`).join('')}</div></fieldset>`).join('')}<button id="delete-object" class="danger">Delete object</button>`;
+ box.innerHTML=\`<div class="field-head"><strong>\${escapeHTML(o.name)}</strong><span>\${escapeHTML(o.type.toUpperCase())}</span></div><label>Name<input id="obj-name" value="\${escapeHTML(o.name)}"></label><label>Base color<input id="obj-color" type="color" value="#\${o.color.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('')}"></label>\${['position','rotation','scale'].map(k=>\`<fieldset><legend>\${k}</legend><div class="triple">\${['X','Y','Z'].map((a,i)=>\`<label>\${a}<input type="number" step="\${k==='rotation'?'.05':'.1'}" \${k==='scale'?'min="0.001"':''} data-prop="\${k}" data-i="\${i}" value="\${o[k][i].toFixed(2)}"></label>\`).join('')}</div></fieldset>\`).join('')}<button id="delete-object" class="danger">Delete object</button>\`;
  $('#obj-name').oninput=e=>{o.name=e.target.value;let b=$('[data-id="'+o.id+'"] span');if(b)b.textContent=o.name;};
  $('#obj-name').onchange=()=>{o.name=o.name.slice(0,160);$('#obj-name').value=o.name;commitEdit();};
  $('#obj-color').oninput=e=>{o.color=hex(e.target.value);};
  $('#obj-color').onchange=commitEdit;
  $$('[data-prop]').forEach(el=>el.onchange=()=>{o[el.dataset.prop][+el.dataset.i]=+el.value;commitEdit();});
- $('#delete-object').onclick=()=>{state.objects=state.objects.filter(x=>x.id!==o.id);delete state.keys[o.id];state.selected=state.objects[0]?.id||null;state.selectedVertices=[];sync();commitEdit();};
+ $('#delete-object').onclick=()=>{state.objects=state.objects.filter(x=>x.id!==o.id);delete state.keys[o.id];state.selected=state.objects[0]?.id||null;clearElementSelection();state.topology=null;sync();commitEdit();};
 }
+function performMeshOperation(operation,label){
+ const o=state.objects.find(item=>item.id===state.selected);
+ if(!o)return error(Error('Select a mesh object first.'));
+ const backup={positions:o.mesh.positions.slice(),normals:o.mesh.normals.slice(),indices:o.mesh.indices.slice()};
+ try{
+  const topology=state.topology||buildMeshTopology(o.mesh);
+  const result=operation(o.mesh,topology);
+  createSceneDocument(state.objects,state.keys);
+  renderer?.invalidate(o.mesh);
+  clearElementSelection();
+  state.topology=null;
+  rebuildTopology(true);
+  if(label==='Extrude'&&result.verticesAdded){
+   const objectFaces=state.topology?.faces||[];
+   const selectedFaceCenter=topology.faces[state.selectedFaces[0]]?.center;
+   if(selectedFaceCenter){
+    const originalFace=topology.faces[state.selectedFaces[0]];
+    const target=selectedFaceCenter.map((value,axis)=>value+originalFace.normal[axis]*Number($('#extrude-distance')?.value||0));
+    let best=null,bestDistance=Infinity;
+    for(const face of objectFaces){
+     const d=Math.hypot(...face.center.map((value,axis)=>value-target[axis]));
+     if(dotVector(face.normal,originalFace.normal)>.98&&d<bestDistance){best=face.id;bestDistance=d;}
+    }
+    if(best!==null)state.selectedFaces=[best];
+   }
+  }
+  sync();
+  commitEdit();
+  $('#toast').textContent=label+' completed: '+JSON.stringify(result);
+  $('#toast').classList.add('show');
+  setTimeout(()=>$('#toast').classList.remove('show'),3200);
+ }catch(e){
+  o.mesh.positions=backup.positions;o.mesh.normals=backup.normals;o.mesh.indices=backup.indices;
+  renderer?.invalidate(o.mesh);
+  state.topology=null;
+  rebuildTopology(true);
+  sync();
+  error(e);
+ }
+}
+function dotVector(a,b){return a.reduce((sum,value,index)=>sum+value*b[index],0);}
 function setEditMode(mode){
- state.editMode=mode==='vertex'?'vertex':'object';
- if(state.editMode==='object'){state.selectedVertices=[];state.multiSelect=false;}
+ state.editMode=['vertex','edge','face'].includes(mode)?mode:'object';
+ if(state.editMode==='object'){clearElementSelection();state.multiSelect=false;}
+ else clearElementSelection();
+ state.topology=null;
+ rebuildTopology(true);
  const multiButton=$('#toggle-multi-select');
  if(multiButton){
-  multiButton.hidden=state.editMode!=='vertex';
+  multiButton.hidden=state.editMode==='object';
   multiButton.classList.toggle('active',state.multiSelect);
   multiButton.setAttribute('aria-pressed',String(state.multiSelect));
  }
  $$('[data-edit-mode]').forEach(button=>button.classList.toggle('active',button.dataset.editMode===state.editMode));
  const hint=$('#viewport-help');
- if(hint)hint.textContent=state.editMode==='vertex'?'VERTEX EDIT · TAP TO SELECT · MULTI TOGGLE FOR ADDITIVE SELECTION':'DRAG TO ORBIT · SCROLL TO ZOOM · TAP OBJECT TO SELECT';
+ const hints={object:'DRAG TO ORBIT · SCROLL TO ZOOM · TAP OBJECT TO SELECT',vertex:'VERTEX EDIT · TAP TO SELECT · MULTI FOR ADDITIVE SELECTION',edge:'EDGE EDIT · TAP AN EDGE · MULTI FOR ADDITIVE SELECTION',face:'FACE EDIT · TAP A POLYGON · MULTI FOR ADDITIVE SELECTION'};
+ if(hint)hint.textContent=hints[state.editMode];
  sync();
 }
 function setMode(m){state.mode=m;$$('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));$('#visual-panel').hidden=m!=='visual';$('#code-panel').hidden=m!=='code';}
