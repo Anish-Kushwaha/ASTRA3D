@@ -86,7 +86,7 @@ function performMeshOperation(operation,label){
  const originalCenter=originalFace?[...originalFace.center]:null;
  const originalNormal=originalFace?[...originalFace.normal]:null;
  const distance=Number($('#extrude-distance')?.value||0);
- const backup={positions:o.mesh.positions.slice(),normals:o.mesh.normals.slice(),indices:o.mesh.indices.slice()};
+ const backup={positions:o.mesh.positions.slice(),normals:o.mesh.normals.slice(),indices:o.mesh.indices.slice(),faceGroups:o.mesh.faceGroups?.slice()};
  try{
   const topology=state.topology||buildMeshTopology(o.mesh);
   const result=operation(o.mesh,topology);
@@ -114,6 +114,7 @@ function performMeshOperation(operation,label){
   o.mesh.positions=backup.positions;
   o.mesh.normals=backup.normals;
   o.mesh.indices=backup.indices;
+  if(backup.faceGroups)o.mesh.faceGroups=backup.faceGroups;else delete o.mesh.faceGroups;
   renderer?.invalidate(o.mesh);
   state.topology=null;
   rebuildTopology(true);
