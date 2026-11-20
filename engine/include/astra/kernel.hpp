@@ -2,6 +2,7 @@
 
 #include "astra/math.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
