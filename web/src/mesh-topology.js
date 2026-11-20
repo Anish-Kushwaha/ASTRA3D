@@ -306,7 +306,10 @@ export function extrudeFace(mesh,faceId,distance,topology=buildMeshTopology(mesh
   assertCapacity(mesh,topMap.size,capIndices.length+sideIndices.length);
   for(const value of topMap.values())mesh.positions.push(...value.point);
   const addedFaceGroups=Array(capIndices.length/3).fill(nextFaceGroup++);
-  for(let edge=0;edge<polygon.boundary.length;edge++)addedFaceGroups.push(nextFaceGroup++,nextFaceGroup++);
+  for(let edge=0;edge<polygon.boundary.length;edge++){
+    const sideFaceGroup=nextFaceGroup++;
+    addedFaceGroups.push(sideFaceGroup,sideFaceGroup);
+  }
   mesh.indices.push(...capIndices,...sideIndices);
   mesh.faceGroups=[...topology.triangleFaceIds,...addedFaceGroups];
   recomputeNormals(mesh);
@@ -334,7 +337,8 @@ export function insetFace(mesh,faceId,amount=.15,topology=buildMeshTopology(mesh
   for(let i=0;i<polygon.vertices.length;i++){
     const next=(i+1)%polygon.vertices.length;
     appendQuad(added,polygon.vertices[i],polygon.vertices[next],innerIds[next],innerIds[i]);
-    addedGroups.push(nextFaceGroup++,nextFaceGroup++);
+    const ringFaceGroup=nextFaceGroup++;
+    addedGroups.push(ringFaceGroup,ringFaceGroup);
   }
   const innerFaceGroup=nextFaceGroup++;
   for(let i=1;i<innerIds.length-1;i++){added.push(innerIds[0],innerIds[i],innerIds[i+1]);addedGroups.push(innerFaceGroup);}
@@ -400,7 +404,14 @@ export function loopCutFromEdge(mesh,edgeId,topology=buildMeshTopology(mesh),rat
   }
   const added=[],addedGroups=[];
   let nextFaceGroup=topology.triangleFaceIds.reduce((maximum,value)=>Math.max(maximum,value),-1)+1;
-  for(const polygons of replacement.values())for(const polygon of polygons){appendQuad(added,...polygon);addedGroups.push(nextFaceGroup++,nextFaceGroup++);}
+  for(const polygons of replacement.values())for(const polygon of polygons){
+    for(const quad of polygons){
+      appendQuad(added,...quad);
+      const faceGroup=nextFaceGroup++;
+      addedGroups.push(faceGroup,faceGroup);
+    }
+    break;
+  }
   assertCapacity(mesh,edgePoints.size,added.length);
   for(const point of edgePoints.values())mesh.positions.push(...point.point);
   mesh.indices=[...kept,...added];
