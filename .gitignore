@@ -1,0 +1,12 @@
+build/
+cmake-build-*/
+out/
+*.ppm
+*.o
+*.obj
+*.exe
+.DS_Store
+node_modules/
+web/dist/
+web/.vite/
+.vercel/
