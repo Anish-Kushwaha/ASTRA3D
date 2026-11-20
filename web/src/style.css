@@ -146,3 +146,14 @@
 
 .edit-mode-switch button[hidden]{display:none!important}
 .edit-mode-switch #toggle-multi-select.active{background:#6a482b;border-color:#b4773c;color:#ffe0b9}
+
+/* Polygon modeling mode controls. */
+.edit-mode-switch button[data-edit-mode="edge"].active,
+.edit-mode-switch button[data-edit-mode="face"].active{background:#5b4937;border-color:#94663a;color:#f4c38d}
+#loop-cut,#extrude-face,#inset-face{width:100%;margin:5px 0}
+#loop-ratio,#extrude-distance,#inset-amount{font-size:12px}
+@media(max-width:600px){
+  .edit-mode-switch{gap:1px;padding:1px}
+  .edit-mode-switch button{padding:5px 4px;font-size:7px}
+  .viewport-controls{gap:1px}
+}
