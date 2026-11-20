@@ -1,0 +1,24 @@
+{
+  "name": "ASTRA3D Studio",
+  "short_name": "ASTRA3D",
+  "description": "Browser-first 3D creation studio by ANISH ENTERPRISES.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#181818",
+  "theme_color": "#181818",
+  "orientation": "any",
+  "categories": [
+    "design",
+    "productivity",
+    "utilities"
+  ],
+  "icons": [
+    {
+      "src": "/astra3d-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
