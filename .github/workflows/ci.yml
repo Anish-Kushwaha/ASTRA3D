@@ -82,10 +82,12 @@ jobs:
           GRANT USAGE ON SCHEMA auth, storage TO authenticated;
           GRANT SELECT, INSERT, UPDATE, DELETE ON storage.objects TO authenticated;
           SQL
-      - name: Apply schema twice to verify idempotency
+      - name: Verify canonical schema and migration stay synchronized
+        run: cmp supabase/schema.sql supabase/migrations/20261120120000_astra3d_initial_schema.sql
+      - name: Apply migration twice to verify idempotency
         run: |
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/schema.sql
-          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/schema.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261120120000_astra3d_initial_schema.sql
+          psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/20261120120000_astra3d_initial_schema.sql
       - name: Verify project isolation, roles and storage policies
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/schema_smoke.sql
 
