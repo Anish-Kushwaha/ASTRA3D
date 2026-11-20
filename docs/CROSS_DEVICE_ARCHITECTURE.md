@@ -64,7 +64,7 @@ Feature detection must drive capability messaging. Do not rely on user-agent str
 - [ ] Add a capability panel for WebGL 2 limits, memory and WebGPU availability.
 - [x] Add 100-step undo/redo history and keyboard shortcuts.
 - [x] Add local browser autosave and recovery using validated scene snapshots.
-- [x] Add versioned scene document v2 with v1 migration and bounded geometry validation.
+- [x] Add versioned scene document v2 with v1 migration, bounded geometry validation and animation keyframe round-tripping.
 - [x] Add direct viewport object picking for click/tap selection.
 - [ ] Make phone workflows context-aware, with simplified tool panels.
 
