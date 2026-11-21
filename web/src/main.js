@@ -51,6 +51,7 @@ function clearElementSelection(){
  state.selectedFaces=[];
 }
 function sync(){
+ renderer?.prune(state.objects);
  let list=$('#object-list');
  list.innerHTML=state.objects.map(o=>`<button class="object-row ${o.id===state.selected?'active':''}" data-id="${o.id}"><i style="background:#${o.color.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('')}"></i><span>${escapeHTML(o.name)}</span><small>${escapeHTML(o.type)}</small></button>`).join('')||'<p class="empty">No objects yet. Add a primitive to begin.</p>';
  $$('[data-id]').forEach(b=>b.onclick=()=>{state.selected=b.dataset.id;clearElementSelection();state.topology=null;sync();});
@@ -268,6 +269,19 @@ $('#add-key').onclick=addKey;$('#scrubber').oninput=e=>{state.time=+e.target.val
 document.addEventListener('keydown',event=>{const target=event.target;if(target instanceof HTMLElement&&(target.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(target.tagName)))return;const mod=event.ctrlKey||event.metaKey;const key=event.key.toLowerCase();if(!mod){const tool={g:'move',r:'rotate',s:'scale'}[key];if(tool){event.preventDefault();setGizmoTool(tool);}return;}if(key==='z'){event.preventDefault();event.shiftKey?redo():undo();}else if(key==='y'){event.preventDefault();redo();}else if(key==='s'){event.preventDefault();exportScene();}});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')writeAutosave(captureSnapshot());});window.addEventListener('pagehide',()=>writeAutosave(captureSnapshot()));
 let drag=false,px=0,py=0,canvas=$('#viewport'),activePointers=new Map(),pointerStarts=new Map(),lastPinchDistance=0;
+let contextRecoverySaved=false;
+canvas.addEventListener('webglcontextlost',event=>{
+ event.preventDefault();
+ state.playing=false;
+ contextRecoverySaved=writeAutosave(captureSnapshot());
+ error(new Error(contextRecoverySaved
+  ?'Graphics context lost. Your scene was saved; the editor will reload when graphics recover.'
+  :'Graphics context lost and browser autosave failed. Export a scene backup before refreshing.'));
+});
+canvas.addEventListener('webglcontextrestored',()=>{
+ if(contextRecoverySaved)window.location.reload();
+ else error(new Error('Graphics recovered. Export your scene, then refresh to rebuild the renderer.'));
+});
 const gizmoCanvas=document.createElement('canvas');
 gizmoCanvas.className='gizmo-overlay';
 gizmoCanvas.setAttribute('aria-hidden','true');
