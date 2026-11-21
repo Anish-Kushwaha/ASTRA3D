@@ -20,16 +20,26 @@ export const MeshFactory={cube,sphere,plane,cylinder,torus};
 const MAX_OBJ_CHARS=32*1024*1024;
 const MAX_OBJ_VERTICES=300_000;
 const MAX_OBJ_TRIANGLES=1_000_000;
+const MAX_OBJ_LINES=2_000_000;
+const MAX_OBJ_LINE_CHARS=1_000_000;
 
 export function parseOBJ(src){
   if(typeof src!=="string")throw new Error("OBJ data must be text.");
   if(src.length>MAX_OBJ_CHARS)throw new Error("OBJ file is too large (32 MB maximum).");
 
   const positions=[],indices=[];
-  let lineNumber=0;
-  for(const rawLine of src.split(/\r?\n/)){
+  let lineNumber=0,offset=0;
+  while(offset<src.length){
+    const newline=src.indexOf("\n",offset);
+    const end=newline<0?src.length:newline;
+    let rawLine=src.slice(offset,end);
+    offset=newline<0?src.length:newline+1;
+    if(rawLine.endsWith("\r"))rawLine=rawLine.slice(0,-1);
     lineNumber++;
-    const line=rawLine.slice(0,rawLine.indexOf("#")<0?undefined:rawLine.indexOf("#")).trim();
+    if(lineNumber>MAX_OBJ_LINES)throw new Error("OBJ exceeds the 2,000,000-line import limit.");
+    if(rawLine.length>MAX_OBJ_LINE_CHARS)throw new Error(`OBJ line ${lineNumber} is too long to parse safely.`);
+    const comment=rawLine.indexOf("#");
+    const line=rawLine.slice(0,comment<0?undefined:comment).trim();
     if(!line)continue;
     const fields=line.split(/\s+/);
     if(fields[0]==="v"){
