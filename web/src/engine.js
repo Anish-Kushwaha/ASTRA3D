@@ -17,7 +17,71 @@ function plane(){return{positions:[-5,0,-5,5,0,-5,5,0,5,-5,0,5],normals:[0,1,0,0
 function cylinder(segs=32){let p=[],n=[],ix=[];for(let y=0;y<=1;y++)for(let i=0;i<=segs;i++){let a=i/segs*2*Math.PI,x=Math.cos(a),z=Math.sin(a);p.push(x,y-.5,z);n.push(x,0,z);}for(let i=0;i<segs;i++){let a=i,b=a+segs+1;ix.push(a,b,a+1,a+1,b,b+1);}return{positions:p,normals:n,indices:ix};}
 function torus(R=1,r=.3,rs=32,ts=16){let p=[],n=[],ix=[];for(let i=0;i<=rs;i++)for(let j=0;j<=ts;j++){let u=i/rs*2*Math.PI,v=j/ts*2*Math.PI,nx=Math.cos(u)*Math.cos(v),ny=Math.sin(v),nz=Math.sin(u)*Math.cos(v);p.push((R+r*Math.cos(v))*Math.cos(u),r*Math.sin(v),(R+r*Math.cos(v))*Math.sin(u));n.push(nx,ny,nz);}for(let i=0;i<rs;i++)for(let j=0;j<ts;j++){let a=i*(ts+1)+j,b=a+ts+1;ix.push(a,b,a+1,a+1,b,b+1);}return{positions:p,normals:n,indices:ix};}
 export const MeshFactory={cube,sphere,plane,cylinder,torus};
-export function parseOBJ(src){let verts=[],p=[],n=[],ix=[];for(let line of src.split(/\r?\n/)){let a=line.trim().split(/\s+/);if(a[0]==='v'&&a.length>=4)verts.push(a.slice(1,4).map(Number));if(a[0]==='f'&&a.length>=4){let ids=a.slice(1).map(s=>{let i=Number(s.split('/')[0]);return i<0?verts.length+i:i-1;});for(let j=1;j<ids.length-1;j++){let tri=[verts[ids[0]],verts[ids[j]],verts[ids[j+1]]];if(tri.some(v=>!v))continue;let nn=norm(cross(sub(tri[1],tri[0]),sub(tri[2],tri[0]))),b=p.length/3;for(let v of tri){p.push(...v);n.push(...nn);}ix.push(b,b+1,b+2);}}}if(!ix.length)throw Error('OBJ contains no valid faces.');return{positions:p,normals:n,indices:ix};}
+const MAX_OBJ_CHARS=32*1024*1024;
+const MAX_OBJ_VERTICES=300_000;
+const MAX_OBJ_TRIANGLES=1_000_000;
+
+export function parseOBJ(src){
+  if(typeof src!=="string")throw new Error("OBJ data must be text.");
+  if(src.length>MAX_OBJ_CHARS)throw new Error("OBJ file is too large (32 MB maximum).");
+
+  const positions=[],indices=[];
+  let lineNumber=0;
+  for(const rawLine of src.split(/\r?\n/)){
+    lineNumber++;
+    const line=rawLine.slice(0,rawLine.indexOf("#")<0?undefined:rawLine.indexOf("#")).trim();
+    if(!line)continue;
+    const fields=line.split(/\s+/);
+    if(fields[0]==="v"){
+      if(fields.length<4)throw new Error(`OBJ line ${lineNumber}: vertex requires three coordinates.`);
+      if(positions.length/3>=MAX_OBJ_VERTICES)throw new Error("OBJ exceeds the 300,000-vertex import limit.");
+      const point=fields.slice(1,4).map(Number);
+      if(!point.every(Number.isFinite))throw new Error(`OBJ line ${lineNumber}: vertex coordinates must be finite numbers.`);
+      positions.push(...point);
+      continue;
+    }
+    if(fields[0]!=="f")continue;
+    const references=fields.slice(1);
+    if(references.length<3)throw new Error(`OBJ line ${lineNumber}: face requires at least three vertices.`);
+    if(references.length>10000)throw new Error(`OBJ line ${lineNumber}: face has too many vertices.`);
+    const vertexCount=positions.length/3;
+    const faceIndices=references.map(reference=>{
+      const token=reference.split("/")[0];
+      if(!/^[+-]?\d+$/.test(token))throw new Error(`OBJ line ${lineNumber}: invalid face vertex index "${reference}".`);
+      const value=Number(token);
+      if(!Number.isSafeInteger(value)||value===0)throw new Error(`OBJ line ${lineNumber}: vertex indices cannot be zero.`);
+      const index=value>0?value-1:vertexCount+value;
+      if(index<0||index>=vertexCount)throw new Error(`OBJ line ${lineNumber}: face references a vertex that does not exist.`);
+      return index;
+    });
+    const triangles=faceIndices.length-2;
+    if(indices.length/3+triangles>MAX_OBJ_TRIANGLES)throw new Error("OBJ exceeds the 1,000,000-triangle import limit.");
+    for(let index=1;index<faceIndices.length-1;index++){
+      indices.push(faceIndices[0],faceIndices[index],faceIndices[index+1]);
+    }
+  }
+
+  if(!positions.length||!indices.length)throw new Error("OBJ contains no valid vertices and faces.");
+  const normals=new Array(positions.length).fill(0);
+  for(let index=0;index<indices.length;index+=3){
+    const a=indices[index]*3,b=indices[index+1]*3,c=indices[index+2]*3;
+    const ab=[positions[b]-positions[a],positions[b+1]-positions[a+1],positions[b+2]-positions[a+2]];
+    const ac=[positions[c]-positions[a],positions[c+1]-positions[a+1],positions[c+2]-positions[a+2]];
+    const normal=cross(ab,ac);
+    for(const offset of [a,b,c]){
+      normals[offset]+=normal[0];normals[offset+1]+=normal[1];normals[offset+2]+=normal[2];
+    }
+  }
+  for(let index=0;index<normals.length;index+=3){
+    const length=Math.hypot(normals[index],normals[index+1],normals[index+2]);
+    if(length>1e-12){
+      normals[index]/=length;normals[index+1]/=length;normals[index+2]/=length;
+    }else{
+      normals[index]=0;normals[index+1]=1;normals[index+2]=0;
+    }
+  }
+  return {positions,normals,indices};
+}
 export class AstraRenderer{
  constructor(canvas){this.canvas=canvas;this.gl=canvas.getContext('webgl2',{antialias:true});if(!this.gl)throw Error('WebGL 2 is unavailable. Use a browser with WebGL 2 support.');let g=this.gl,sh=(t,s)=>{let x=g.createShader(t);g.shaderSource(x,s);g.compileShader(x);if(!g.getShaderParameter(x,g.COMPILE_STATUS))throw Error(g.getShaderInfoLog(x));return x;};this.program=g.createProgram();g.attachShader(this.program,sh(g.VERTEX_SHADER,V));g.attachShader(this.program,sh(g.FRAGMENT_SHADER,F));g.linkProgram(this.program);if(!g.getProgramParameter(this.program,g.LINK_STATUS))throw Error(g.getProgramInfoLog(this.program));g.useProgram(this.program);this.loc={p:g.getAttribLocation(this.program,'aPosition'),n:g.getAttribLocation(this.program,'aNormal'),mvp:g.getUniformLocation(this.program,'uMVP'),model:g.getUniformLocation(this.program,'uModel'),color:g.getUniformLocation(this.program,'uColor'),light:g.getUniformLocation(this.program,'uLight'),camera:g.getUniformLocation(this.program,'uCamera'),unlit:g.getUniformLocation(this.program,'uUnlit'),pointSize:g.getUniformLocation(this.program,'uPointSize'),pointMode:g.getUniformLocation(this.program,'uPointMode')};this.cache=new WeakMap();this.selectionVao=g.createVertexArray();this.selectionBuffer=g.createBuffer();g.bindVertexArray(this.selectionVao);g.bindBuffer(g.ARRAY_BUFFER,this.selectionBuffer);g.bufferData(g.ARRAY_BUFFER,new Float32Array(0),g.DYNAMIC_DRAW);g.enableVertexAttribArray(this.loc.p);g.vertexAttribPointer(this.loc.p,3,g.FLOAT,false,0,0);g.bindVertexArray(null);this.grid=this.upload(this.makeGrid(),g.LINES);g.enable(g.DEPTH_TEST);g.enable(g.CULL_FACE);g.clearColor(.025,.04,.07,1);}
  makeGrid(){let p=[],n=[],ix=[];for(let i=-10;i<=10;i++){p.push(-10,.001,i,10,.001,i,i,.001,-10,i,.001,10);n.push(0,1,0,0,1,0,0,1,0,0,1,0);let k=p.length/3;ix.push(k-4,k-3,k-2,k-1);}return{positions:p,normals:n,indices:ix};}
