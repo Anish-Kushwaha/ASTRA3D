@@ -1,7 +1,7 @@
 import './style.css';
 import {AstraRenderer,MeshFactory,parseOBJ,pickObject} from './engine.js';
 import {pickVertex,translateSelectedVertices} from './mesh-edit.js';
-import {buildMeshTopology,pickEdge,pickFace,extrudeFace,insetFace,loopCutFromEdge} from './mesh-topology.js';
+import {buildMeshTopology,pickEdge,pickFace,bevelEdge,extrudeFace,insetFace,loopCutFromEdge} from './mesh-topology.js';
 import {SceneHistory,parseSceneDocument,createSceneDocument,readAutosave,writeAutosave} from './project.js';
 const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],uid=()=>crypto.randomUUID();
 const state={objects:[],selected:null,mode:'visual',editMode:'object',multiSelect:false,selectedVertices:[],selectedEdges:[],selectedFaces:[],topology:null,grid:true,playing:false,time:0,duration:10,keys:{},camera:{target:[0,0,0],yaw:.65,pitch:.38,distance:7,fov:52}};
@@ -53,8 +53,9 @@ function inspector(){
  if(state.editMode==='edge'){
   if(!o){box.innerHTML='<p class="empty">Select a mesh, then switch to Edge mode.</p>';return;}
   const selected=state.selectedEdges.filter(index=>Number.isInteger(index)&&index>=0&&(state.topology?.edges.length||0)>index);
-  if(!selected.length){box.innerHTML='<div class="field-head"><strong>EDGE EDIT</strong><span>'+(state.topology?.edges.length||0)+' EDGES</span></div><p class="empty">Tap an edge in the viewport. Use Multi or Shift to select multiple edges.</p><p class="hint">Loop Cut follows connected quad faces from one selected edge.</p>';return;}
-  box.innerHTML=`<div class="field-head"><strong>${selected.length} EDGE${selected.length===1?'':'S'} SELECTED</strong><span>${state.topology.edges.length} TOTAL</span></div><p class="hint">Loop Cut inserts a split through the connected quad-face edge loop. Select one starting edge.</p><fieldset><legend>LOOP CUT POSITION</legend><label>Position<input id="loop-ratio" type="number" min="0.05" max="0.95" step="0.05" value="0.50"></label></fieldset><button id="loop-cut" class="primary">Loop Cut</button><button id="clear-edge-selection" class="danger">Clear edge selection</button>`;
+  if(!selected.length){box.innerHTML='<div class="field-head"><strong>EDGE EDIT</strong><span>'+(state.topology?.edges.length||0)+' EDGES</span></div><p class="empty">Tap an edge in the viewport. Use Multi or Shift to select multiple edges.</p><p class="hint">Bevel trims a manifold edge. Loop Cut follows connected quad-face loops.</p>';return;}
+  box.innerHTML=`<div class="field-head"><strong>${selected.length} EDGE${selected.length===1?'':'S'} SELECTED</strong><span>${state.topology.edges.length} TOTAL</span></div><p class="hint">Bevel one manifold edge at a time. Loop Cut follows connected quad-face loops.</p><fieldset><legend>BEVEL WIDTH</legend><label>Width<input id="bevel-width" type="number" min="0.01" step="0.05" value="0.10"></label></fieldset><button id="bevel-edge" class="primary">Bevel selected edge</button><fieldset><legend>LOOP CUT POSITION</legend><label>Position<input id="loop-ratio" type="number" min="0.05" max="0.95" step="0.05" value="0.50"></label></fieldset><button id="loop-cut" class="primary">Loop Cut</button><button id="clear-edge-selection" class="danger">Clear edge selection</button>`;
+  $('#bevel-edge').onclick=()=>{if(selected.length!==1)return error(Error('Select exactly one edge for Bevel.'));const width=Number($('#bevel-width').value);performMeshOperation((mesh,topology)=>bevelEdge(mesh,selected[0],width,topology),'Bevel');};
   $('#loop-cut').onclick=()=>{if(selected.length!==1)return error(Error('Select exactly one starting edge for Loop Cut.'));const ratio=Number($('#loop-ratio').value);performMeshOperation((mesh,topology)=>loopCutFromEdge(mesh,selected[0],topology,ratio),'Loop Cut');};
   $('#clear-edge-selection').onclick=()=>{state.selectedEdges=[];sync();};
   return;
