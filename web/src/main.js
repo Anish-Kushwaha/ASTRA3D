@@ -189,8 +189,107 @@ $('#add-key').onclick=addKey;$('#scrubber').oninput=e=>{state.time=+e.target.val
 document.addEventListener('keydown',event=>{const target=event.target;if(target instanceof HTMLElement&&(target.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(target.tagName)))return;const mod=event.ctrlKey||event.metaKey;const key=event.key.toLowerCase();if(!mod){const tool={g:'move',r:'rotate',s:'scale'}[key];if(tool){event.preventDefault();setGizmoTool(tool);}return;}if(key==='z'){event.preventDefault();event.shiftKey?redo():undo();}else if(key==='y'){event.preventDefault();redo();}else if(key==='s'){event.preventDefault();exportScene();}});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')writeAutosave(captureSnapshot());});window.addEventListener('pagehide',()=>writeAutosave(captureSnapshot()));
 let drag=false,px=0,py=0,canvas=$('#viewport'),activePointers=new Map(),pointerStarts=new Map(),lastPinchDistance=0;
+const gizmoCanvas=document.createElement('canvas');
+gizmoCanvas.className='gizmo-overlay';
+gizmoCanvas.setAttribute('aria-hidden','true');
+$('.center').append(gizmoCanvas);
+const gizmoContext=gizmoCanvas.getContext('2d');
+let transformDrag=null;
+function selectedVertexPivot(object){
+ const selected=state.selectedVertices.filter(index=>Number.isInteger(index)&&index>=0&&index<object.mesh.positions.length/3);
+ if(!selected.length)return null;
+ const pivot=[0,0,0];
+ for(const index of selected)for(let axis=0;axis<3;axis++)pivot[axis]+=object.mesh.positions[index*3+axis]/selected.length;
+ return pivot;
+}
+function renderTransformGizmo(){
+ const rect=canvas.getBoundingClientRect(),centerRect=$('.center').getBoundingClientRect();
+ gizmoCanvas.style.left=(rect.left-centerRect.left)+'px';
+ gizmoCanvas.style.top=(rect.top-centerRect.top)+'px';
+ gizmoCanvas.style.width=rect.width+'px';
+ gizmoCanvas.style.height=rect.height+'px';
+ const ratio=Math.min(window.devicePixelRatio||1,2),width=Math.max(1,Math.round(rect.width*ratio)),height=Math.max(1,Math.round(rect.height*ratio));
+ if(gizmoCanvas.width!==width||gizmoCanvas.height!==height){gizmoCanvas.width=width;gizmoCanvas.height=height;}
+ if(!gizmoContext)return;
+ gizmoContext.setTransform(ratio,0,0,ratio,0,0);
+ gizmoContext.clearRect(0,0,rect.width,rect.height);
+ const object=state.objects.find(item=>item.id===state.selected);
+ if(!object||!['object','vertex'].includes(state.editMode)||(state.editMode==='vertex'&&!state.selectedVertices.length)){state.gizmoFrame=null;return;}
+ const pivot=state.editMode==='vertex'?selectedVertexPivot(object):[0,0,0];
+ const gizmo=buildTransformGizmo(object,state.camera,{width:rect.width,height:rect.height},state.gizmoTool,pivot);
+ state.gizmoFrame=gizmo;
+ if(!gizmo)return;
+ const ctx=gizmoContext,colors=['#f16a62','#72d69b','#61a8ff'];
+ ctx.save();ctx.lineCap='round';ctx.lineJoin='round';
+ if(gizmo.tool==='rotate'){
+  for(const ring of gizmo.rings){ctx.beginPath();ring.points.forEach((point,index)=>index?ctx.lineTo(point.x,point.y):ctx.moveTo(point.x,point.y));ctx.strokeStyle=colors[ring.axis];ctx.globalAlpha=.9;ctx.lineWidth=2.5;ctx.stroke();}
+ }else{
+  for(const axis of gizmo.axes){
+   const color=colors[axis.axis],dx=axis.end.x-axis.start.x,dy=axis.end.y-axis.start.y,angle=Math.atan2(dy,dx);
+   ctx.globalAlpha=.95;ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=3;
+   ctx.beginPath();ctx.moveTo(axis.start.x,axis.start.y);ctx.lineTo(axis.end.x,axis.end.y);ctx.stroke();
+   if(gizmo.tool==='move'){
+    ctx.beginPath();ctx.moveTo(axis.end.x,axis.end.y);ctx.lineTo(axis.end.x-10*Math.cos(angle-.42),axis.end.y-10*Math.sin(angle-.42));ctx.lineTo(axis.end.x-10*Math.cos(angle+.42),axis.end.y-10*Math.sin(angle+.42));ctx.closePath();ctx.fill();
+   }else{ctx.fillRect(axis.end.x-5,axis.end.y-5,10,10);}
+   ctx.font='600 11px Inter,system-ui,sans-serif';ctx.fillText('XYZ'[axis.axis],axis.end.x+7,axis.end.y-7);
+  }
+ }
+ ctx.globalAlpha=1;ctx.fillStyle='#f4f4f4';ctx.strokeStyle='#222';ctx.lineWidth=2;ctx.beginPath();ctx.arc(gizmo.center.x,gizmo.center.y,5,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore();
+}
+function beginTransformDrag(event){
+ if(transformDrag||!state.gizmoFrame)return false;
+ const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
+ const hit=hitTestTransformGizmo(state.gizmoFrame,x,y);
+ if(!hit)return false;
+ const object=state.objects.find(item=>item.id===state.selected);
+ if(!object)return false;
+ const vertices=state.editMode==='vertex'?state.selectedVertices.filter(index=>Number.isInteger(index)&&index>=0&&index<object.mesh.positions.length/3):[];
+ if(state.editMode==='vertex'&&!vertices.length)return false;
+ transformDrag={
+  pointerId:event.pointerId,objectId:object.id,tool:hit.tool,axis:hit.axis,gizmo:state.gizmoFrame,
+  startX:x,startY:y,initial:{position:[...object.position],rotation:[...object.rotation],scale:[...object.scale]},
+  vertices,vertexValues:vertices.map(index=>({index,point:object.mesh.positions.slice(index*3,index*3+3)})),
+  changed:false,vertexMode:state.editMode==='vertex'
+ };
+ return true;
+}
+function updateTransformDrag(event){
+ if(!transformDrag||event.pointerId!==transformDrag.pointerId)return false;
+ const rect=canvas.getBoundingClientRect(),x=event.clientX-rect.left,y=event.clientY-rect.top;
+ const dx=x-transformDrag.startX,dy=y-transformDrag.startY;
+ const object=state.objects.find(item=>item.id===transformDrag.objectId);
+ if(!object){transformDrag.changed=false;return true;}
+ const {tool,axis,gizmo,initial}=transformDrag;
+ if(tool==='rotate'){
+  const angle=rotationDragAngle(gizmo,axis,transformDrag.startX,transformDrag.startY,x,y);
+  if(!transformDrag.vertexMode)applyObjectAxisTransform(object,'rotate',axis,angle,initial);
+  transformDrag.changed=Math.abs(angle)>1e-4;
+ }else if(tool==='move'){
+  const amount=axisDragAmount(gizmo,axis,dx,dy);
+  if(transformDrag.vertexMode){
+   const localAmount=amount/object.scale[axis];
+   for(const value of transformDrag.vertexValues){
+    for(let component=0;component<3;component++)object.mesh.positions[value.index*3+component]=value.point[component]+(component===axis?localAmount:0);
+   }
+   recomputeNormals(object.mesh);renderer?.invalidate(object.mesh);
+   transformDrag.changed=Math.abs(localAmount)>1e-6;
+  }else{applyObjectAxisTransform(object,'move',axis,amount,initial);transformDrag.changed=Math.abs(amount)>1e-6;}
+ }else if(tool==='scale'){
+  const factor=Math.exp(axisDragPixels(gizmo,axis,dx,dy)*.01);
+  applyObjectAxisTransform(object,'scale',axis,factor,initial);
+  transformDrag.changed=Math.abs(factor-1)>1e-5;
+ }
+ return true;
+}
+function finishTransformDrag(event){
+ if(!transformDrag||event.pointerId!==transformDrag.pointerId)return false;
+ const changed=transformDrag.changed;transformDrag=null;
+ if(changed){commitEdit();sync();}
+ return true;
+}
 const pointerDistance=()=>{const points=[...activePointers.values()];return points.length<2?0:Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y);};
 canvas.onpointerdown=e=>{
+  if(beginTransformDrag(e)){canvas.setPointerCapture(e.pointerId);drag=false;e.preventDefault();return;}
   activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
   pointerStarts.set(e.pointerId,{x:e.clientX,y:e.clientY});
   canvas.setPointerCapture(e.pointerId);
@@ -198,6 +297,7 @@ canvas.onpointerdown=e=>{
   else if(activePointers.size===2){drag=false;lastPinchDistance=pointerDistance();}
 };
 canvas.onpointermove=e=>{
+  if(updateTransformDrag(e))return;
   if(!activePointers.has(e.pointerId))return;
   activePointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
   if(activePointers.size===2){
@@ -214,6 +314,7 @@ canvas.onpointermove=e=>{
   px=e.clientX;py=e.clientY;
 };
 const releasePointer=(e,allowPick=false)=>{
+  if(finishTransformDrag(e))return;
   const start=pointerStarts.get(e.pointerId);
   if(allowPick&&activePointers.size===1&&start&&Math.hypot(e.clientX-start.x,e.clientY-start.y)<6){
     if(state.editMode==='object'){
@@ -282,7 +383,7 @@ canvas.onwheel=e=>{
   e.preventDefault();
   state.camera.distance=Math.max(1.5,Math.min(50,state.camera.distance+Math.sign(e.deltaY)*.35));
 };
-let last=performance.now();function frame(now){let dt=Math.min(.05,(now-last)/1000);last=now;if(state.playing){state.time+=dt;if(state.time>state.duration)state.time=0;$('#scrubber').value=state.time;$('#time-readout').textContent=state.time.toFixed(2)+'s';applyKeys();}renderer?.render(state.objects,state.camera,state.selected,state.grid,false,{mode:state.editMode,objectId:state.selected,selectedVertices:state.selectedVertices,selectedEdges:state.selectedEdges,selectedFaces:state.selectedFaces,topology:state.topology});$('#object-count').textContent=state.objects.length;requestAnimationFrame(frame);}requestAnimationFrame(frame);
+let last=performance.now();function frame(now){let dt=Math.min(.05,(now-last)/1000);last=now;if(state.playing){state.time+=dt;if(state.time>state.duration)state.time=0;$('#scrubber').value=state.time;$('#time-readout').textContent=state.time.toFixed(2)+'s';applyKeys();}renderer?.render(state.objects,state.camera,state.selected,state.grid,false,{mode:state.editMode,objectId:state.selected,selectedVertices:state.selectedVertices,selectedEdges:state.selectedEdges,selectedFaces:state.selectedFaces,topology:state.topology});renderTransformGizmo();$('#object-count').textContent=state.objects.length;requestAnimationFrame(frame);}requestAnimationFrame(frame);
 
 
 // Cross-device controls: compact tablets and phones use a focused viewport
