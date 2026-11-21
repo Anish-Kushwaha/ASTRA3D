@@ -40,7 +40,7 @@ test("OBJ import shares vertices, triangulates polygon faces and calculates fini
     "v 1 1 0",
     "v 0 1 0",
     "f 1/1/1 2/2/1 3/3/1 4/4/1"
-  ].join("\\n"));
+  ].join("\n"));
   assert.equal(mesh.positions.length/3,4);
   assert.deepEqual(mesh.indices,[0,1,2,0,2,3]);
   assert.equal(mesh.normals.length,mesh.positions.length);
@@ -57,20 +57,19 @@ test("OBJ import supports negative indices and ignores unsupported records",()=>
     "vt 0 0",
     "vn 0 0 1",
     "f -3/1/1 -2/1/1 -1/1/1"
-  ].join("\\n"));
+  ].join("\n"));
   assert.deepEqual(mesh.indices,[0,1,2]);
 });
 
 test("OBJ import rejects malformed coordinates, zero and out-of-range indices",()=>{
-  assert.throws(()=>parseOBJ("v 0 NaN 0\\nv 1 0 0\\nv 0 1 0\\nf 1 2 3"),/finite numbers/);
-  assert.throws(()=>parseOBJ("v 0 0 0\\nv 1 0 0\\nv 0 1 0\\nf 0 2 3"),/cannot be zero/);
-  assert.throws(()=>parseOBJ("v 0 0 0\\nv 1 0 0\\nv 0 1 0\\nf 1 2 4"),/does not exist/);
-  assert.throws(()=>parseOBJ("v 0 0 0\\nf 1 1"),/at least three vertices/);
+  assert.throws(()=>parseOBJ("v 0 NaN 0\nv 1 0 0\nv 0 1 0\nf 1 2 3"),/finite numbers/);
+  assert.throws(()=>parseOBJ("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 0 2 3"),/cannot be zero/);
+  assert.throws(()=>parseOBJ("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 4"),/does not exist/);
+  assert.throws(()=>parseOBJ("v 0 0 0\nf 1 1"),/at least three vertices/);
   assert.throws(()=>parseOBJ(null),/text/);
 });
 
 test("OBJ import produces safe fallback normals for degenerate triangles",()=>{
-  const mesh=parseOBJ("v 0 0 0\\nv 1 0 0\\nv 2 0 0\\nf 1 2 3");
+  const mesh=parseOBJ("v 0 0 0\nv 1 0 0\nv 2 0 0\nf 1 2 3");
   assert.deepEqual(mesh.normals,[0,1,0,0,1,0,0,1,0]);
 });
-\n
