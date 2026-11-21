@@ -67,6 +67,7 @@ test("OBJ import rejects malformed coordinates, zero and out-of-range indices",(
   assert.throws(()=>parseOBJ("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 4"),/does not exist/);
   assert.throws(()=>parseOBJ("v 0 0 0\nf 1 1"),/at least three vertices/);
   assert.throws(()=>parseOBJ(null),/text/);
+  assert.throws(()=>parseOBJ("#"+"x".repeat(1_000_001)),/too long/);
 });
 
 test("OBJ import produces safe fallback normals for degenerate triangles",()=>{
