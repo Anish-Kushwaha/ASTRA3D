@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  buildMeshTopology,extrudeFace,insetFace,loopCutFromEdge,pickEdge,pickFace
+  buildMeshTopology,bevelEdge,extrudeFace,insetFace,loopCutFromEdge,pickEdge,pickFace
 } from "./mesh-topology.js";
 
 function cubeMesh(){
@@ -88,3 +88,51 @@ test("loop cut rejects non-quad faces and invalid edge ids",()=>{
   assert.throws(()=>loopCutFromEdge(mesh,999,topology),/valid edge/);
   assert.throws(()=>loopCutFromEdge(mesh,0,topology),/quad-face loops/);
 });
+
+test("edge bevel trims both adjacent faces and adds a separate bevel strip",()=>{
+  const mesh=cubeMesh();
+  const topology=buildMeshTopology(mesh);
+  const edge=topology.edges.find(item=>item.faces.length===2&&item.useCount===2);
+  assert.ok(edge);
+  const beforeVertices=mesh.positions.length/3;
+  const beforeIndices=mesh.indices.length;
+  const result=bevelEdge(mesh,edge.id,.1,topology);
+  assert.equal(result.verticesAdded,4);
+  assert.equal(result.facesRebuilt,2);
+  assert.equal(result.bevelFacesAdded,1);
+  assert.equal(mesh.positions.length/3,beforeVertices+4);
+  assert.equal(mesh.indices.length,beforeIndices+6);
+  assert.ok(mesh.positions.every(Number.isFinite));
+  assert.ok(mesh.normals.every(Number.isFinite));
+  const rebuilt=buildMeshTopology(mesh);
+  assert.equal(rebuilt.faces.length,7);
+  assert.ok(rebuilt.faces.some(face=>face.boundary.length===4));
+});
+
+test("edge bevel rejects boundary edges and unsafe widths without mutating the mesh",()=>{
+  const openMesh={
+    positions:[0,0,0,1,0,0,0,1,0],
+    normals:[0,0,1,0,0,1,0,0,1],
+    indices:[0,1,2]
+  };
+  const openTopology=buildMeshTopology(openMesh);
+  assert.throws(()=>bevelEdge(openMesh,0,.1,openTopology),/exactly two faces/);
+
+  const mesh=cubeMesh(),topology=buildMeshTopology(mesh);
+  const edge=topology.edges.find(item=>item.faces.length===2&&item.useCount===2);
+  const before={
+    positions:mesh.positions.slice(),
+    normals:mesh.normals.slice(),
+    indices:mesh.indices.slice(),
+    faceGroups:mesh.faceGroups.slice()
+  };
+  assert.throws(()=>bevelEdge(mesh,edge.id,10,topology),/half of each adjoining edge/);
+  assert.throws(()=>bevelEdge(mesh,999,.1,topology),/valid edge/);
+  assert.deepEqual({
+    positions:mesh.positions,
+    normals:mesh.normals,
+    indices:mesh.indices,
+    faceGroups:mesh.faceGroups
+  },before);
+});
+
