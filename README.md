@@ -27,6 +27,7 @@ Create and inspect 3D projects directly in a modern browser on phones, tablets, 
 - Procedural cube, UV sphere, cylinder, torus and plane.
 - Scene hierarchy and direct click/tap selection in the 3D viewport.
 - Object, Vertex, Edge and Face edit modes with viewport selection and touch-friendly multi-select.
+- Interactive viewport Move, Rotate and Scale gizmos for objects, plus axis-constrained Move for selected vertices (G/R/S shortcuts in supported modes).
 - Vertex translation, polygon face extrusion, convex-face inset, connected quad-loop cuts, and single-edge beveling on manifold convex faces, with recalculated mesh normals.
 - Polygon face groups are validated and serialized so inset and loop-cut boundaries survive autosave and scene export/import.
 - Transform and base-color inspector with validation.
@@ -82,7 +83,7 @@ See [Product Architecture](docs/PRODUCT_ARCHITECTURE.md), [Cross-device Architec
 
 ## Current status
 
-ASTRA3D is an early engineering foundation, not yet a production-complete Blender/Maya replacement. Advanced proportional editing, bevels, non-manifold repair, arbitrary n-gon triangulation, sculpting, UVs, rigging, skinning, advanced animation, physically based materials, shadows, compositing, robust glTF import/export, plugin SDK, cloud sync and desktop packaging remain future work. Current inset and edge bevel support convex polygon faces; edge bevel is limited to one manifold edge at a time, and Loop Cut follows connected quad-face loops.
+ASTRA3D is an early engineering foundation, not yet a production-complete Blender/Maya replacement. Advanced proportional editing, bevels, non-manifold repair, arbitrary n-gon triangulation, sculpting, UVs, rigging, skinning, advanced animation, physically based materials, shadows, compositing, robust glTF import/export, plugin SDK, cloud sync and desktop packaging remain future work. Current inset and edge bevel support convex polygon faces; edge bevel is limited to one manifold edge at a time, and Loop Cut follows connected quad-face loops. Viewport Rotate and Scale gizmos currently apply to whole objects; vertex selections support axis-constrained Move only.
 
 ## License
 
