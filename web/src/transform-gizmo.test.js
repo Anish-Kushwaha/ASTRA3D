@@ -66,7 +66,7 @@ test("rotation gizmo builds rings and computes signed angular drags",()=>{
   const angle=rotationDragAngle(gizmo,2,250,200,200,150);
   assert.ok(angle>0);
   assert.ok(Math.abs(angle-Math.PI/2)<.03);
-  assert.deepEqual(hitTestTransformGizmo(gizmo,250,200),{axis:2,tool:"rotate"});
+  assert.deepEqual(hitTestTransformGizmo(gizmo,235,235),{axis:2,tool:"rotate"});
 });
 
 test("object axis transforms use the initial transform and preserve other axes",()=>{
