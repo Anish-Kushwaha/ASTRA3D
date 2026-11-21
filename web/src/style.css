@@ -158,3 +158,12 @@
   .viewport-controls{gap:1px}
 }
 #bevel-edge,#loop-cut,#extrude-face,#inset-face{width:100%;margin:5px 0}
+
+/* Viewport transform gizmos and compact tool controls. */
+.gizmo-overlay{position:absolute;z-index:5;pointer-events:none;overflow:visible}
+.viewport-toolbar{position:relative;z-index:6}
+.transform-tool-switch{display:flex;align-items:center;gap:2px;padding:2px;margin:0 4px;background:#292929;border:1px solid #505050;border-radius:3px}
+.transform-tool-switch button{padding:5px 7px;font-size:8px;background:transparent;border-color:transparent;color:#aaa;white-space:nowrap}
+.transform-tool-switch button.active{background:#5b4937;border-color:#94663a;color:#f4c38d}
+.transform-tool-switch button:disabled{opacity:.32;cursor:not-allowed}
+@media(max-width:600px){.transform-tool-switch{gap:0;padding:1px;margin:0 1px}.transform-tool-switch button{padding:5px 4px;font-size:7px}.viewport-controls{gap:1px}}
