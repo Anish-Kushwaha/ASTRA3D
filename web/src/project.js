@@ -129,7 +129,7 @@ export function createSceneDocument(objects, keys = {}) {
 export class SceneHistory {
   constructor(limit = 80, maxBytes = 96 * 1024 * 1024) {
     this.limit = Math.max(2, limit);
-    this.maxBytes = Math.max(1024, maxBytes);
+    this.maxBytes = Math.max(1, maxBytes);
     this.entries = [];
     this.entryBytes = [];
     this.totalBytes = 0;
