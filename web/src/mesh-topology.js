@@ -227,7 +227,7 @@ export function buildMeshTopology(mesh){
   for(const [key,uses] of edgeUses){
     const adjacent=[...new Set(uses.map(use=>triangleFaceIds[use.triangle]))];
     if(uses.length>1&&adjacent.length===1)continue;
-    const use=uses[0],edge={id:edges.length,key,a:use.a,b:use.b,aKey:use.aKey,bKey:use.bKey,faces:adjacent};
+    const use=uses[0],edge={id:edges.length,key,a:use.a,b:use.b,aKey:use.aKey,bKey:use.bKey,faces:adjacent,useCount:uses.length};
     edges.push(edge);
     edgeByKey.set(key,edge);
   }
@@ -418,3 +418,110 @@ export function loopCutFromEdge(mesh,edgeId,topology=buildMeshTopology(mesh),rat
   recomputeNormals(mesh);
   return {facesCut:cuts.length,verticesAdded:edgePoints.size,quadsCreated:cuts.length*2};
 }
+
+/**
+ * Bevel one manifold edge by trimming its two adjacent convex polygon faces
+ * and bridging the trimmed boundaries with a new quad strip.
+ *
+ * This first bevel implementation intentionally supports one edge at a time.
+ * It rejects borders, non-manifold edges, non-convex faces and widths that
+ * would consume half of an adjoining edge.
+ */
+export function bevelEdge(mesh,edgeId,width=.1,topology=buildMeshTopology(mesh)){
+  assertEditableMesh(mesh);
+  if(!Number.isFinite(width)||width<=0){
+    throw new Error("Bevel width must be a positive finite number.");
+  }
+  const edge=topology.edges[edgeId];
+  if(!edge)throw new Error("Select a valid edge before beveling.");
+  if(edge.useCount!==2||edge.faces.length!==2||edge.faces[0]===edge.faces[1]){
+    throw new Error("Bevel requires one manifold edge shared by exactly two faces.");
+  }
+
+  const baseVertexCount=mesh.positions.length/3;
+  const extraPositions=[];
+  const replacements=[];
+  const cutsByFace=[];
+  for(const faceId of edge.faces){
+    const face=topology.faces[faceId];
+    if(!face)throw new Error("The selected edge has an invalid adjacent face.");
+    const polygon=facePolygon(mesh,face);
+    if(polygon.boundary.length<3||!isConvexPolygon(polygon.points,faceNormal(mesh,face))){
+      throw new Error("Bevel currently supports convex polygon faces only.");
+    }
+    const index=polygon.boundary.findIndex(item=>item.key===edge.key);
+    if(index<0)throw new Error("The selected edge is not part of an adjacent face boundary.");
+    const count=polygon.boundary.length;
+    const selected=polygon.boundary[index];
+    const previous=polygon.boundary[(index+count-1)%count];
+    const next=polygon.boundary[(index+1)%count];
+    const start=positionAt(mesh,selected.a);
+    const end=positionAt(mesh,selected.b);
+    const previousPoint=positionAt(mesh,previous.a);
+    const nextPoint=positionAt(mesh,next.b);
+    const startLength=Math.hypot(...sub(previousPoint,start));
+    const endLength=Math.hypot(...sub(nextPoint,end));
+    if(startLength<=EPSILON||endLength<=EPSILON||width>=startLength*.5||width>=endLength*.5){
+      throw new Error("Bevel width must be less than half of each adjoining edge length.");
+    }
+    const startPoint=start.map((value,axis)=>value+(previousPoint[axis]-value)*(width/startLength));
+    const endPoint=end.map((value,axis)=>value+(nextPoint[axis]-value)*(width/endLength));
+    const startId=baseVertexCount+extraPositions.length;
+    extraPositions.push(startPoint);
+    const endId=baseVertexCount+extraPositions.length;
+    extraPositions.push(endPoint);
+    const ids=[startId,endId];
+    for(let offset=2;offset<count;offset++)ids.push(polygon.vertices[(index+offset)%count]);
+    replacements.push({faceId,ids});
+    cutsByFace.push({
+      faceId,
+      startKey:selected.aKey,
+      endKey:selected.bKey,
+      startId,
+      endId
+    });
+  }
+
+  const first=cutsByFace[0],second=cutsByFace[1];
+  const secondByKey=new Map([[second.startKey,second.startId],[second.endKey,second.endId]]);
+  const secondStart=secondByKey.get(first.startKey);
+  const secondEnd=secondByKey.get(first.endKey);
+  if(secondStart===undefined||secondEnd===undefined){
+    throw new Error("The adjacent face boundaries do not share matching edge endpoints.");
+  }
+  const bevelQuad=[first.startId,secondStart,secondEnd,first.endId];
+  const replacedFaces=new Set(edge.faces);
+  const kept=[],keptGroups=[];
+  for(let triangle=0;triangle<mesh.indices.length/3;triangle++){
+    if(!replacedFaces.has(topology.triangleFaceIds[triangle])){
+      kept.push(...mesh.indices.slice(triangle*3,triangle*3+3));
+      keptGroups.push(topology.triangleFaceIds[triangle]);
+    }
+  }
+
+  let nextFaceGroup=topology.triangleFaceIds.reduce((maximum,value)=>Math.max(maximum,value),-1)+1;
+  const added=[],addedGroups=[];
+  const appendPolygon=(ids)=>{
+    if(ids.length<3)throw new Error("Bevel would create an invalid polygon.");
+    const group=nextFaceGroup++;
+    for(let index=1;index<ids.length-1;index++){
+      added.push(ids[0],ids[index],ids[index+1]);
+      addedGroups.push(group);
+    }
+  };
+  for(const replacement of replacements)appendPolygon(replacement.ids);
+  appendPolygon(bevelQuad);
+  assertCapacity(mesh,extraPositions.length,added.length);
+
+  for(const point of extraPositions)mesh.positions.push(...point);
+  mesh.indices=[...kept,...added];
+  mesh.faceGroups=[...keptGroups,...addedGroups];
+  recomputeNormals(mesh);
+  return {
+    verticesAdded:extraPositions.length,
+    facesRebuilt:replacements.length,
+    bevelFacesAdded:1,
+    trianglesAdded:added.length/3
+  };
+}
+
