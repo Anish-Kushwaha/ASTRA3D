@@ -15,7 +15,27 @@ function commitEdit(){history.push(captureSnapshot());updateHistoryControls();qu
 function restoreSnapshot(snapshot){state.objects=snapshot.objects;state.keys=snapshot.keys||{};state.selected=snapshot.selected;state.editMode=snapshot.editMode||'object';state.multiSelect=!!snapshot.multiSelect;state.selectedVertices=snapshot.selectedVertices||[];state.selectedEdges=snapshot.selectedEdges||[];state.selectedFaces=snapshot.selectedFaces||[];state.topology=null;applyKeys();sync();setEditMode(state.editMode);updateHistoryControls();queueAutosave();}
 function undo(){const snapshot=history.undo();if(snapshot)restoreSnapshot(snapshot);updateHistoryControls();}
 function redo(){const snapshot=history.redo();if(snapshot)restoreSnapshot(snapshot);updateHistoryControls();}
-function add(type,name){let o={id:uid(),name:name||type[0].toUpperCase()+type.slice(1),type,mesh:MeshFactory[type](),position:[(state.objects.length%3-1)*1.8,0,0],rotation:[0,0,0],scale:[1,1,1],color:hex(color(state.objects.length))};state.objects.push(o);state.selected=o.id;clearElementSelection();state.topology=null;sync();commitEdit();}
+const MAX_SCENE_OBJECTS=10000;
+const MAX_SCENE_VERTICES=2_000_000;
+const MAX_SCENE_TRIANGLES=4_000_000;
+const MAX_SCENE_FILE_BYTES=64*1024*1024;
+const MAX_OBJ_FILE_BYTES=32*1024*1024;
+function assertSceneCapacity(objects){
+ if(objects.length>MAX_SCENE_OBJECTS)throw new Error("Scene exceeds the 10,000-object limit.");
+ let vertices=0,triangles=0;
+ for(const object of objects){
+  vertices+=object.mesh?.positions?.length/3||0;
+  triangles+=object.mesh?.indices?.length/3||0;
+  if(vertices>MAX_SCENE_VERTICES)throw new Error("Scene exceeds the 2,000,000-vertex limit.");
+  if(triangles>MAX_SCENE_TRIANGLES)throw new Error("Scene exceeds the 4,000,000-triangle limit.");
+ }
+}
+function add(type,name){
+ if(state.objects.length>=MAX_SCENE_OBJECTS)return error(Error("Scene has reached the 10,000-object limit."));
+ const object={id:uid(),name:name||type[0].toUpperCase()+type.slice(1),type,mesh:MeshFactory[type](),position:[(state.objects.length%3-1)*1.8,0,0],rotation:[0,0,0],scale:[1,1,1],color:hex(color(state.objects.length))};
+ try{assertSceneCapacity([...state.objects,object]);}catch(e){return error(e);}
+ state.objects.push(object);state.selected=object.id;clearElementSelection();state.topology=null;sync();commitEdit();
+}
 function error(e){$('#toast').textContent=e.message||String(e);$('#toast').classList.add('show');setTimeout(()=>$('#toast').classList.remove('show'),3500);}
 function rebuildTopology(force=false){
  const object=state.objects.find(item=>item.id===state.selected);
@@ -172,18 +192,77 @@ ASTRA3D.cylinder({ "name": "Neck", "position": [0, 1.05, 0], "scale": [0.28, 0.3
 ASTRA3D.sphere({ "name": "Left shoulder", "position": [-0.82, 0.55, 0], "scale": [0.32, 0.32, 0.32], "color": "#5599cc" });
 ASTRA3D.sphere({ "name": "Right shoulder", "position": [0.82, 0.55, 0], "scale": [0.32, 0.32, 0.32], "color": "#5599cc" });`;}
 function runCode(){let next=[];for(let raw of $('#code-editor').value.split(/\r?\n/)){let line=raw.replace(/\/\/.*$/,'').trim();if(!line||line==='ASTRA3D.clear();')continue;let m=line.match(/^ASTRA3D\.(cube|sphere|cylinder|torus|plane)\s*\((\{.*\})\)\s*;?$/);if(!m)throw Error('Unsupported command: '+line);let c=JSON.parse(m[2]);let mesh=MeshFactory[m[1]]();next.push({id:uid(),name:c.name||m[1],type:m[1],mesh,position:c.position||[0,0,0],rotation:c.rotation||[0,0,0],scale:c.scale||[1,1,1],color:hex(c.color||'#63b7ed')});}if(!next.length)throw Error('No supported ASTRA3D geometry commands were found.');next=createSceneDocument(next).objects;state.objects=next;state.selected=next[0].id;clearElementSelection();state.topology=null;state.keys={};sync();setMode('visual');commitEdit();}
-function save(blob,name){let a=document.createElement('a'),url=URL.createObjectURL(blob);a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);}
-function exportScene(){const document=createSceneDocument(state.objects,state.keys);save(new Blob([JSON.stringify(document,null,2)],{type:'application/json'}),'astra-scene.astra.json');}
-function importScene(file){let r=new FileReader();r.onload=()=>{try{let d=parseSceneDocument(r.result),idMap=new Map();state.objects=d.objects.map(o=>{const id=uid();idMap.set(o.id,id);return{...o,id};});state.keys={};for(const [oldId,frames] of Object.entries(d.keys||{})){const newId=idMap.get(oldId);if(newId)state.keys[newId]=frames;}state.selected=state.objects[0]?.id||null;clearElementSelection();state.topology=null;sync();commitEdit();}catch(e){error(e);}};r.readAsText(file);}
-function importOBJ(file){let r=new FileReader();r.onload=()=>{try{if(r.result.length>32*1024*1024)throw Error('OBJ file is too large (32 MB maximum).');let mesh=parseOBJ(r.result),o={id:uid(),name:file.name.replace(/\.obj$/i,''),type:'Imported OBJ',mesh,position:[0,0,0],rotation:[0,0,0],scale:[1,1,1],color:[.45,.68,.9]};o=createSceneDocument([o]).objects[0];o.id=uid();state.objects.push(o);state.selected=o.id;clearElementSelection();state.topology=null;sync();commitEdit();}catch(e){error(e);}};r.readAsText(file);}
-function addKey(){let o=state.objects.find(x=>x.id===state.selected);if(!o)return error(Error('Select an object first.'));let t=+state.time.toFixed(2);state.keys[o.id]??=[];state.keys[o.id]=state.keys[o.id].filter(k=>k.time!==t);state.keys[o.id].push({time:t,position:[...o.position],rotation:[...o.rotation],scale:[...o.scale]});state.keys[o.id].sort((a,b)=>a.time-b.time);renderKeys();$('#key-status').textContent='Keyframe saved at '+t.toFixed(2)+' seconds';commitEdit();}
+function save(blob,name){
+ const anchor=document.createElement('a'),url=URL.createObjectURL(blob);
+ anchor.href=url;anchor.download=name;anchor.hidden=true;document.body.append(anchor);anchor.click();anchor.remove();
+ window.setTimeout(()=>URL.revokeObjectURL(url),30000);
+}
+function exportScene(){
+ try{
+  const document=createSceneDocument(state.objects,state.keys);
+  save(new Blob([JSON.stringify(document,null,2)],{type:'application/json'}),'astra-scene.astra.json');
+  $('#toast').textContent='Scene exported successfully.';$('#toast').classList.add('show');
+  setTimeout(()=>$('#toast').classList.remove('show'),2200);
+ }catch(e){error(e);}
+}
+function importScene(file){
+ if(!file)return;
+ if(file.size>MAX_SCENE_FILE_BYTES)return error(Error('Scene file is too large (64 MB maximum).'));
+ const reader=new FileReader();
+ reader.onerror=()=>error(Error('The selected scene file could not be read.'));
+ reader.onload=()=>{
+  try{
+   const document=parseSceneDocument(reader.result),idMap=new Map();
+   const objects=document.objects.map(object=>{const id=uid();idMap.set(object.id,id);return{...object,id};});
+   const keys={};
+   for(const [oldId,frames] of Object.entries(document.keys||{})){
+    const newId=idMap.get(oldId);if(newId)keys[newId]=frames;
+   }
+   assertSceneCapacity(objects);
+   state.objects=objects;state.keys=keys;state.selected=objects[0]?.id||null;
+   clearElementSelection();state.topology=null;sync();commitEdit();
+   $('#toast').textContent='Scene imported successfully.';$('#toast').classList.add('show');
+   setTimeout(()=>$('#toast').classList.remove('show'),2200);
+  }catch(e){error(e);}
+ };
+ reader.readAsText(file);
+}
+function importOBJ(file){
+ if(!file)return;
+ if(file.size>MAX_OBJ_FILE_BYTES)return error(Error('OBJ file is too large (32 MB maximum).'));
+ if(state.objects.length>=MAX_SCENE_OBJECTS)return error(Error('Scene has reached the 10,000-object limit.'));
+ const reader=new FileReader();
+ reader.onerror=()=>error(Error('The selected OBJ file could not be read.'));
+ reader.onload=()=>{
+  try{
+   const mesh=parseOBJ(reader.result);
+   let object={id:uid(),name:file.name.replace(/\.obj$/i,''),type:'Imported OBJ',mesh,position:[0,0,0],rotation:[0,0,0],scale:[1,1,1],color:[.45,.68,.9]};
+   object=createSceneDocument([object]).objects[0];object.id=uid();
+   assertSceneCapacity([...state.objects,object]);
+   state.objects.push(object);state.selected=object.id;clearElementSelection();state.topology=null;sync();commitEdit();
+   $('#toast').textContent='OBJ mesh imported successfully.';$('#toast').classList.add('show');
+   setTimeout(()=>$('#toast').classList.remove('show'),2200);
+  }catch(e){error(e);}
+ };
+ reader.readAsText(file);
+}
+function addKey(){
+ const object=state.objects.find(item=>item.id===state.selected);
+ if(!object)return error(Error('Select an object first.'));
+ const time=+state.time.toFixed(2),track=[...(state.keys[object.id]||[])].filter(key=>key.time!==time);
+ track.push({time,position:[...object.position],rotation:[...object.rotation],scale:[...object.scale]});
+ track.sort((a,b)=>a.time-b.time);
+ const nextKeys={...state.keys,[object.id]:track};
+ try{createSceneDocument(state.objects,nextKeys);}catch(e){return error(e);}
+ state.keys=nextKeys;renderKeys();$('#key-status').textContent='Keyframe saved at '+time.toFixed(2)+' seconds';commitEdit();
+}
 function renderKeys(){let keys=state.keys[state.selected]||[];$('#keyframes').innerHTML=keys.map(k=>`<button class="key" style="left:${k.time/state.duration*100}%" data-time="${k.time}" title="${k.time}s"></button>`).join('');$$('[data-time]').forEach(b=>b.onclick=()=>{state.time=+b.dataset.time;$('#scrubber').value=state.time;applyKeys();});}
 function applyKeys(){for(let o of state.objects){let ks=state.keys[o.id]||[];if(!ks.length)continue;let a=ks[0],b=ks.at(-1);for(let i=0;i<ks.length-1;i++)if(state.time>=ks[i].time&&state.time<=ks[i+1].time){a=ks[i];b=ks[i+1];break;}let t=b.time===a.time?0:Math.max(0,Math.min(1,(state.time-a.time)/(b.time-a.time)));for(let k of ['position','rotation','scale'])o[k]=a[k].map((v,i)=>v+(b[k][i]-v)*t);}}
 $('#app').innerHTML=`<header class="top"><a class="brand"><b>A</b> ASTRA<span>3D</span></a><div class="project-name">UNTITLED PROJECT <i>● LOCAL</i></div><div class="top-actions"><button id="undo" title="Undo (Ctrl+Z)" disabled>↶ Undo</button><button id="redo" title="Redo (Ctrl+Shift+Z)" disabled>↷ Redo</button><button id="open-scene">Open scene</button><button id="export-scene" class="primary">Export scene</button></div></header><nav class="workspace-tabs"><span class="workspace-caption">WORKSPACE</span><span class="workspace-tab active">Layout</span><span class="workspace-tab">Modeling</span><span class="workspace-tab">Sculpting</span><span class="workspace-tab">UV Editing</span><span class="workspace-tab">Shading</span><span class="workspace-tab">Rigging</span><span class="workspace-tab">Animation</span><span class="workspace-tab">Rendering</span><span class="workspace-tab">Scripting</span><span class="workspace-spacer"></span><span class="version-label">ASTRA ENGINE · EARLY ACCESS</span></nav><div class="workspace"><aside class="left"><div class="panel-title">CREATE</div><div class="mode-switch"><button data-mode="visual" class="active">Visual Studio</button><button data-mode="code">Code Studio</button></div><div id="visual-panel"><div class="section-label">ADD GEOMETRY</div><div class="primitive-grid">${['cube','sphere','cylinder','torus','plane'].map(x=>`<button data-add="${x}"><b>${({cube:'◇',sphere:'◉',cylinder:'▤',torus:'◎',plane:'▱'})[x]}</b>${x}</button>`).join('')}</div><div class="section-label">SCENE HIERARCHY</div><div id="object-list"></div><div class="left-bottom"><button id="import-obj">Import OBJ mesh</button><p>Wavefront .OBJ geometry import</p></div></div><div id="code-panel" hidden><div class="section-label">ASTRA3D SCRIPT</div><textarea id="code-editor" spellcheck="false"></textarea><button id="run-code" class="primary full">▶ Build scene from code</button><p class="hint">Restricted ASTRA3D commands; uploaded code is never executed as arbitrary JavaScript.</p></div></aside><main class="center"><div class="viewport-toolbar"><span>3D VIEWPORT <i>· PERSPECTIVE</i></span><div class="viewport-controls"><div class="edit-mode-switch" aria-label="Selection mode"><button data-edit-mode="object" class="active">Object</button><button data-edit-mode="vertex">Vertex</button><button data-edit-mode="edge">Edge</button><button data-edit-mode="face">Face</button><button id="toggle-multi-select" hidden aria-pressed="false">Multi</button></div><div class="transform-tool-switch" aria-label="Transform tool"><button data-gizmo-tool="move" class="active" title="Move (G)">Move</button><button data-gizmo-tool="rotate" title="Rotate (R)">Rotate</button><button data-gizmo-tool="scale" title="Scale (S)">Scale</button></div><button id="toggle-grid" class="active">Grid</button><button id="focus-view">Focus view</button></div></div><canvas id="viewport"></canvas><div id="viewport-help" class="viewport-help">DRAG TO ORBIT · SCROLL TO ZOOM · TAP OBJECT TO SELECT</div><section class="timeline"><div class="timeline-head"><strong>ANIMATION TIMELINE</strong><div><button id="add-key">◆ Keyframe</button><button id="play">▶ Play</button><button id="stop">■ Stop</button></div></div><div class="timebar"><span>0s</span><input id="scrubber" type="range" min="0" max="10" step=".01" value="0"><span>10s</span><output id="time-readout">0.00s</output></div><div class="track"><span id="timeline-label">No selection</span><div id="keyframes"></div></div><div id="key-status" class="key-status">Add keyframes to animate selected objects.</div></section></main><aside class="right"><div class="panel-title">PROPERTIES</div><div id="inspector"><p class="empty">Select an object.</p></div><div class="section-label">PROJECT</div><div class="project-meta"><span>Engine <b>ASTRA3D</b></span><span>Renderer <b>Custom WebGL 2</b></span><span>Objects <b id="object-count">0</b></span></div></aside></div><footer class="status-bar"><span>ASTRA3D STUDIO</span><span>SCENE: UNTITLED</span><span>LOCAL SESSION</span><span class="status-spacer"></span><span>WEBGL 2 VIEWPORT</span><span>METRIC · METERS</span></footer><div id="toast"></div><input id="obj-file" type="file" accept=".obj" hidden><input id="scene-file" type="file" accept=".json" hidden>`;
 let renderer;try{renderer=new AstraRenderer($('#viewport'));}catch(e){error(e);}
 $('#code-editor').value=sampleCode();const savedDraft=readAutosave();if(savedDraft){state.objects=savedDraft.scene.objects;state.keys=savedDraft.keys;state.selected=savedDraft.selected;}history.reset(captureSnapshot());sync();setMode('visual');setEditMode('object');updateHistoryControls();if(!savedDraft)queueAutosave();
 $$('[data-add]').forEach(b=>b.onclick=()=>add(b.dataset.add));$$('[data-mode]').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));$('#run-code').onclick=()=>{try{runCode();}catch(e){error(e);}};
-$('#export-scene').onclick=exportScene;$('#undo').onclick=undo;$('#redo').onclick=redo;$('#open-scene').onclick=()=>$('#scene-file').click();$('#scene-file').onchange=e=>e.target.files[0]&&importScene(e.target.files[0]);$('#import-obj').onclick=()=>$('#obj-file').click();$('#obj-file').onchange=e=>e.target.files[0]&&importOBJ(e.target.files[0]);
+$('#export-scene').onclick=exportScene;$('#undo').onclick=undo;$('#redo').onclick=redo;$('#open-scene').onclick=()=>$('#scene-file').click();$('#scene-file').onchange=e=>{const file=e.target.files[0];e.target.value='';if(file)importScene(file);};$('#import-obj').onclick=()=>$('#obj-file').click();$('#obj-file').onchange=e=>{const file=e.target.files[0];e.target.value='';if(file)importOBJ(file);};
 $('[data-edit-mode]').forEach(button=>button.onclick=()=>setEditMode(button.dataset.editMode));$('[data-gizmo-tool]').forEach(button=>button.onclick=()=>setGizmoTool(button.dataset.gizmoTool));$('#toggle-multi-select').onclick=()=>{state.multiSelect=!state.multiSelect;$('#toggle-multi-select').classList.toggle('active',state.multiSelect);$('#toggle-multi-select').setAttribute('aria-pressed',String(state.multiSelect));};$('#toggle-grid').onclick=()=>{state.grid=!state.grid;$('#toggle-grid').classList.toggle('active',state.grid);};$('#focus-view').onclick=()=>{state.camera.target=[0,0,0];state.camera.distance=7;};
 $('#add-key').onclick=addKey;$('#scrubber').oninput=e=>{state.time=+e.target.value;applyKeys();$('#time-readout').textContent=state.time.toFixed(2)+'s';};$('#play').onclick=()=>state.playing=true;$('#stop').onclick=()=>{state.playing=false;state.time=0;$('#scrubber').value=0;applyKeys();};
 document.addEventListener('keydown',event=>{const target=event.target;if(target instanceof HTMLElement&&(target.isContentEditable||['INPUT','TEXTAREA','SELECT'].includes(target.tagName)))return;const mod=event.ctrlKey||event.metaKey;const key=event.key.toLowerCase();if(!mod){const tool={g:'move',r:'rotate',s:'scale'}[key];if(tool){event.preventDefault();setGizmoTool(tool);}return;}if(key==='z'){event.preventDefault();event.shiftKey?redo():undo();}else if(key==='y'){event.preventDefault();redo();}else if(key==='s'){event.preventDefault();exportScene();}});
