@@ -10,7 +10,21 @@ const escapeHTML=value=>String(value).replace(/[&<>\"']/g,ch=>({'&':'&amp;','<':
 const history=new SceneHistory(100);let autosaveTimer=null;
 function captureSnapshot(){return{objects:state.objects,keys:state.keys,selected:state.selected,editMode:state.editMode,multiSelect:state.multiSelect,selectedVertices:state.selectedVertices,selectedEdges:state.selectedEdges,selectedFaces:state.selectedFaces};}
 function updateHistoryControls(){const undoButton=$('#undo'),redoButton=$('#redo');if(undoButton)undoButton.disabled=!history.canUndo;if(redoButton)redoButton.disabled=!history.canRedo;}
-function queueAutosave(){clearTimeout(autosaveTimer);autosaveTimer=setTimeout(()=>{if(!writeAutosave(captureSnapshot()))error(Error('Autosave could not write to this browser storage. Export a backup to keep your work safe.'));},500);}
+function setSaveState(label,kind='saved'){
+ const indicator=$('#save-state');
+ if(!indicator)return;
+ indicator.textContent=label;
+ indicator.dataset.state=kind;
+}
+function queueAutosave(){
+ setSaveState('Saving locally…','saving');
+ clearTimeout(autosaveTimer);
+ autosaveTimer=setTimeout(()=>{
+  const saved=writeAutosave(captureSnapshot());
+  setSaveState(saved?'Saved locally':'Storage unavailable',saved?'saved':'error');
+  if(!saved)error(Error('Autosave could not write to this browser storage. Export a backup to keep your work safe.'));
+ },500);
+}
 function commitEdit(){history.push(captureSnapshot());updateHistoryControls();queueAutosave();}
 function restoreSnapshot(snapshot){state.objects=snapshot.objects;state.keys=snapshot.keys||{};state.selected=snapshot.selected;state.editMode=snapshot.editMode||'object';state.multiSelect=!!snapshot.multiSelect;state.selectedVertices=snapshot.selectedVertices||[];state.selectedEdges=snapshot.selectedEdges||[];state.selectedFaces=snapshot.selectedFaces||[];state.topology=null;applyKeys();sync();setEditMode(state.editMode);updateHistoryControls();queueAutosave();}
 function undo(){const snapshot=history.undo();if(snapshot)restoreSnapshot(snapshot);updateHistoryControls();}
@@ -53,8 +67,15 @@ function clearElementSelection(){
 function sync(){
  renderer?.prune(state.objects);
  let list=$('#object-list');
- list.innerHTML=state.objects.map(o=>`<button class="object-row ${o.id===state.selected?'active':''}" data-id="${o.id}"><i style="background:#${o.color.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('')}"></i><span>${escapeHTML(o.name)}</span><small>${escapeHTML(o.type)}</small></button>`).join('')||'<p class="empty">No objects yet. Add a primitive to begin.</p>';
- $$('[data-id]').forEach(b=>b.onclick=()=>{state.selected=b.dataset.id;clearElementSelection();state.topology=null;sync();});
+ const query=($('#object-search')?.value||'').trim().toLowerCase();
+ const visibleObjects=state.objects.filter(object=>!query||object.name.toLowerCase().includes(query)||object.type.toLowerCase().includes(query));
+ list.innerHTML=visibleObjects.map(o=>`<button type="button" class="object-row ${o.id===state.selected?'active':''}" data-id="${o.id}" aria-pressed="${o.id===state.selected}"><i style="background:#${o.color.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('')}" aria-hidden="true"></i><span>${escapeHTML(o.name)}</span><small>${escapeHTML(o.type)}</small></button>`).join('')||(state.objects.length?'<p class="empty">No objects match your search.</p>':'<div class="empty-state"><span>◇</span><strong>Your scene is empty</strong><p>Add a primitive to start building in 3D.</p></div>');
+ list.querySelectorAll('[data-id]').forEach(button=>button.onclick=()=>{
+  state.selected=button.dataset.id;
+  clearElementSelection();
+  state.topology=null;
+  sync();
+ });
  rebuildTopology();
  inspector();
  $('#object-count').textContent=state.objects.length;
@@ -184,7 +205,7 @@ function setEditMode(mode){
  syncGizmoToolButtons();
  sync();
 }
-function setMode(m){state.mode=m;$$('[data-mode]').forEach(b=>b.classList.toggle('active',b.dataset.mode===m));$('#visual-panel').hidden=m!=='visual';$('#code-panel').hidden=m!=='code';}
+function setMode(m){state.mode=m;$('[data-mode]').forEach(b=>{const active=b.dataset.mode===m;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});$('#visual-panel').hidden=m!=='visual';$('#code-panel').hidden=m!=='code';}
 function sampleCode(){return `// ASTRA3D Scene Script. Use one command per line.
 ASTRA3D.clear();
 ASTRA3D.cube({ "name": "Body", "position": [0, 0, 0], "scale": [1, 1.5, 0.6], "color": "#5599cc" });
@@ -259,9 +280,85 @@ function addKey(){
 }
 function renderKeys(){let keys=state.keys[state.selected]||[];$('#keyframes').innerHTML=keys.map(k=>`<button class="key" style="left:${k.time/state.duration*100}%" data-time="${k.time}" title="${k.time}s"></button>`).join('');$$('[data-time]').forEach(b=>b.onclick=()=>{state.time=+b.dataset.time;$('#scrubber').value=state.time;applyKeys();});}
 function applyKeys(){for(let o of state.objects){let ks=state.keys[o.id]||[];if(!ks.length)continue;let a=ks[0],b=ks.at(-1);for(let i=0;i<ks.length-1;i++)if(state.time>=ks[i].time&&state.time<=ks[i+1].time){a=ks[i];b=ks[i+1];break;}let t=b.time===a.time?0:Math.max(0,Math.min(1,(state.time-a.time)/(b.time-a.time)));for(let k of ['position','rotation','scale'])o[k]=a[k].map((v,i)=>v+(b[k][i]-v)*t);}}
-$('#app').innerHTML=`<header class="top"><a class="brand"><b>A</b> ASTRA<span>3D</span></a><div class="project-name">UNTITLED PROJECT <i>● LOCAL</i></div><div class="top-actions"><button id="undo" title="Undo (Ctrl+Z)" disabled>↶ Undo</button><button id="redo" title="Redo (Ctrl+Shift+Z)" disabled>↷ Redo</button><button id="open-scene">Open scene</button><button id="export-scene" class="primary">Export scene</button></div></header><nav class="workspace-tabs"><span class="workspace-caption">WORKSPACE</span><span class="workspace-tab active">Layout</span><span class="workspace-tab">Modeling</span><span class="workspace-tab">Sculpting</span><span class="workspace-tab">UV Editing</span><span class="workspace-tab">Shading</span><span class="workspace-tab">Rigging</span><span class="workspace-tab">Animation</span><span class="workspace-tab">Rendering</span><span class="workspace-tab">Scripting</span><span class="workspace-spacer"></span><span class="version-label">ASTRA ENGINE · EARLY ACCESS</span></nav><div class="workspace"><aside class="left"><div class="panel-title">CREATE</div><div class="mode-switch"><button data-mode="visual" class="active">Visual Studio</button><button data-mode="code">Code Studio</button></div><div id="visual-panel"><div class="section-label">ADD GEOMETRY</div><div class="primitive-grid">${['cube','sphere','cylinder','torus','plane'].map(x=>`<button data-add="${x}"><b>${({cube:'◇',sphere:'◉',cylinder:'▤',torus:'◎',plane:'▱'})[x]}</b>${x}</button>`).join('')}</div><div class="section-label">SCENE HIERARCHY</div><div id="object-list"></div><div class="left-bottom"><button id="import-obj">Import OBJ mesh</button><p>Wavefront .OBJ geometry import</p></div></div><div id="code-panel" hidden><div class="section-label">ASTRA3D SCRIPT</div><textarea id="code-editor" spellcheck="false"></textarea><button id="run-code" class="primary full">▶ Build scene from code</button><p class="hint">Restricted ASTRA3D commands; uploaded code is never executed as arbitrary JavaScript.</p></div></aside><main class="center"><div class="viewport-toolbar"><span>3D VIEWPORT <i>· PERSPECTIVE</i></span><div class="viewport-controls"><div class="edit-mode-switch" aria-label="Selection mode"><button data-edit-mode="object" class="active">Object</button><button data-edit-mode="vertex">Vertex</button><button data-edit-mode="edge">Edge</button><button data-edit-mode="face">Face</button><button id="toggle-multi-select" hidden aria-pressed="false">Multi</button></div><div class="transform-tool-switch" aria-label="Transform tool"><button data-gizmo-tool="move" class="active" title="Move (G)">Move</button><button data-gizmo-tool="rotate" title="Rotate (R)">Rotate</button><button data-gizmo-tool="scale" title="Scale (S)">Scale</button></div><button id="toggle-grid" class="active">Grid</button><button id="focus-view">Focus view</button></div></div><canvas id="viewport"></canvas><div id="viewport-help" class="viewport-help">DRAG TO ORBIT · SCROLL TO ZOOM · TAP OBJECT TO SELECT</div><section class="timeline"><div class="timeline-head"><strong>ANIMATION TIMELINE</strong><div><button id="add-key">◆ Keyframe</button><button id="play">▶ Play</button><button id="stop">■ Stop</button></div></div><div class="timebar"><span>0s</span><input id="scrubber" type="range" min="0" max="10" step=".01" value="0"><span>10s</span><output id="time-readout">0.00s</output></div><div class="track"><span id="timeline-label">No selection</span><div id="keyframes"></div></div><div id="key-status" class="key-status">Add keyframes to animate selected objects.</div></section></main><aside class="right"><div class="panel-title">PROPERTIES</div><div id="inspector"><p class="empty">Select an object.</p></div><div class="section-label">PROJECT</div><div class="project-meta"><span>Engine <b>ASTRA3D</b></span><span>Renderer <b>Custom WebGL 2</b></span><span>Objects <b id="object-count">0</b></span></div></aside></div><footer class="status-bar"><span>ASTRA3D STUDIO</span><span>SCENE: UNTITLED</span><span>LOCAL SESSION</span><span class="status-spacer"></span><span>WEBGL 2 VIEWPORT</span><span>METRIC · METERS</span></footer><div id="toast"></div><input id="obj-file" type="file" accept=".obj" hidden><input id="scene-file" type="file" accept=".json" hidden>`;
+$('#app').innerHTML=`<header class="top">
+ <a class="brand" aria-label="ASTRA3D Studio"><b>✦</b><span>ASTRA</span><em>3D</em></a>
+ <div class="project-label"><span class="project-kicker">PROJECT</span><strong>Untitled scene</strong><span id="save-state" data-state="saved">Saved locally</span></div>
+ <div class="top-actions">
+  <button id="undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled><span class="action-icon">↶</span><span>Undo</span></button>
+  <button id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled><span class="action-icon">↷</span><span>Redo</span></button>
+  <span class="action-divider"></span>
+  <button id="open-scene" class="quiet-button"><span class="action-icon">↥</span><span>Open</span></button>
+  <button id="export-scene" class="primary"><span>Export scene</span><span class="export-icon">↗</span></button>
+ </div>
+</header>
+<nav class="workspace-tabs" aria-label="Workspace">
+ <span class="workspace-caption">WORKSPACE</span>
+ <button type="button" class="workspace-tab active" data-mode="visual" aria-pressed="true">Modeling</button>
+ <button type="button" class="workspace-tab" data-mode="code" aria-pressed="false">Scripting</button>
+ <span class="tab-description">Build, edit and inspect your 3D scene</span>
+ <span class="workspace-spacer"></span>
+ <span class="version-label"><i></i> LOCAL WORKSPACE</span>
+</nav>
+<div class="workspace">
+ <aside class="left">
+  <div class="panel-heading"><div><span class="eyebrow">WORKSPACE</span><h2>Scene</h2></div><span class="panel-mark">01</span></div>
+  <div id="visual-panel">
+   <div class="section-label">ADD PRIMITIVE</div>
+   <div class="primitive-grid">${['cube','sphere','cylinder','torus','plane'].map(x=>`<button type="button" data-add="${x}" aria-label="Add ${x}"><b aria-hidden="true">${({cube:'◇',sphere:'◉',cylinder:'▤',torus:'◎',plane:'▱'})[x]}</b><span>${x}</span></button>`).join('')}</div>
+   <div class="hierarchy-heading"><div><span class="section-label">OUTLINER</span><span id="object-count" class="count-pill">0</span></div><input id="object-search" type="search" placeholder="Filter objects…" aria-label="Filter scene objects"></div>
+   <div id="object-list"><div class="empty-state"><span>◇</span><strong>Your scene is empty</strong><p>Add a primitive to start building in 3D.</p></div></div>
+   <div class="left-bottom"><button id="import-obj" class="import-button"><span>＋</span> Import OBJ mesh</button><p>Bring an existing Wavefront .OBJ model into this scene.</p></div>
+  </div>
+  <div id="code-panel" hidden>
+   <div class="section-label">ASTRA3D SCRIPT</div>
+   <textarea id="code-editor" spellcheck="false" aria-label="ASTRA3D scene script"></textarea>
+   <button id="run-code" class="primary full">▶ &nbsp; Build scene from code</button>
+   <p class="hint">Use supported ASTRA3D commands to generate geometry. Arbitrary JavaScript is not executed.</p>
+  </div>
+ </aside>
+ <main class="center">
+  <div class="viewport-toolbar">
+   <div class="viewport-title"><span class="viewport-live"></span><strong>3D VIEWPORT</strong><i>Perspective</i></div>
+   <div class="viewport-controls">
+    <div class="edit-mode-switch" aria-label="Selection mode">
+     <button type="button" data-edit-mode="object" class="active" title="Object selection">Object</button>
+     <button type="button" data-edit-mode="vertex" title="Vertex selection">Vertex</button>
+     <button type="button" data-edit-mode="edge" title="Edge selection">Edge</button>
+     <button type="button" data-edit-mode="face" title="Face selection">Face</button>
+     <button type="button" id="toggle-multi-select" hidden aria-pressed="false" title="Toggle multi-select">Multi</button>
+    </div>
+    <div class="transform-tool-switch" aria-label="Transform tool">
+     <button type="button" data-gizmo-tool="move" class="active" title="Move (G)">Move</button>
+     <button type="button" data-gizmo-tool="rotate" title="Rotate (R)">Rotate</button>
+     <button type="button" data-gizmo-tool="scale" title="Scale (S)">Scale</button>
+    </div>
+    <button type="button" id="toggle-grid" class="utility-button active" title="Toggle ground grid">Grid</button>
+    <button type="button" id="focus-view" class="utility-button" title="Reset viewport focus">Focus</button>
+   </div>
+  </div>
+  <canvas id="viewport" aria-label="Interactive 3D scene viewport"></canvas>
+  <div id="viewport-help" class="viewport-help">DRAG TO ORBIT <span>·</span> SCROLL TO ZOOM <span>·</span> TAP OBJECT TO SELECT</div>
+  <div class="viewport-corner">ASTRA3D <span>·</span> REAL-TIME VIEW</div>
+  <section class="timeline">
+   <div class="timeline-head"><div><span class="eyebrow">MOTION</span><strong>Animation timeline</strong></div><div><button type="button" id="add-key">◆ &nbsp; Keyframe</button><button type="button" id="play">▶</button><button type="button" id="stop">■</button></div></div>
+   <div class="timebar"><span>00:00</span><input id="scrubber" type="range" min="0" max="10" step=".01" value="0" aria-label="Timeline position"><span>00:10</span><output id="time-readout">0.00s</output></div>
+   <div class="track"><span id="timeline-label">No selection</span><div id="keyframes"></div></div>
+   <div id="key-status" class="key-status">Select an object and add keyframes to animate it.</div>
+  </section>
+ </main>
+ <aside class="right">
+  <div class="panel-heading inspector-heading"><div><span class="eyebrow">DETAILS</span><h2>Inspector</h2></div><span class="panel-mark">02</span></div>
+  <div id="inspector"><div class="empty-state"><span>◈</span><strong>Nothing selected</strong><p>Select an object in the viewport or outliner to edit its properties.</p></div></div>
+  <div class="section-label scene-info-label">SCENE INFO</div>
+  <div class="project-meta"><span>Engine <b>ASTRA3D</b></span><span>Renderer <b>WebGL 2</b></span><span>Storage <b>Local</b></span></div>
+ </aside>
+</div>
+<footer class="status-bar"><span class="status-brand">ASTRA3D STUDIO</span><span>UNTITLED SCENE</span><span>LOCAL SESSION</span><span class="status-spacer"></span><span>WEBGL 2</span><span>UNITS · METERS</span></footer>
+<div id="toast" role="status" aria-live="polite"></div>
+<input id="obj-file" type="file" accept=".obj" hidden>
+<input id="scene-file" type="file" accept=".json" hidden>`;
 let renderer;try{renderer=new AstraRenderer($('#viewport'));}catch(e){error(e);}
-$('#code-editor').value=sampleCode();const savedDraft=readAutosave();if(savedDraft){state.objects=savedDraft.scene.objects;state.keys=savedDraft.keys;state.selected=savedDraft.selected;}history.reset(captureSnapshot());sync();setMode('visual');setEditMode('object');updateHistoryControls();if(!savedDraft)queueAutosave();
+$('#code-editor').value=sampleCode();const savedDraft=readAutosave();if(savedDraft){state.objects=savedDraft.scene.objects;state.keys=savedDraft.keys;state.selected=savedDraft.selected;}history.reset(captureSnapshot());sync();setMode('visual');setEditMode('object');updateHistoryControls();if(!savedDraft)queueAutosave();$('#object-search').addEventListener('input',sync);
 $$('[data-add]').forEach(b=>b.onclick=()=>add(b.dataset.add));$$('[data-mode]').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));$('#run-code').onclick=()=>{try{runCode();}catch(e){error(e);}};
 $('#export-scene').onclick=exportScene;$('#undo').onclick=undo;$('#redo').onclick=redo;$('#open-scene').onclick=()=>$('#scene-file').click();$('#scene-file').onchange=e=>{const file=e.target.files[0];e.target.value='';if(file)importScene(file);};$('#import-obj').onclick=()=>$('#obj-file').click();$('#obj-file').onchange=e=>{const file=e.target.files[0];e.target.value='';if(file)importOBJ(file);};
 $('[data-edit-mode]').forEach(button=>button.onclick=()=>setEditMode(button.dataset.editMode));$('[data-gizmo-tool]').forEach(button=>button.onclick=()=>setGizmoTool(button.dataset.gizmoTool));$('#toggle-multi-select').onclick=()=>{state.multiSelect=!state.multiSelect;$('#toggle-multi-select').classList.toggle('active',state.multiSelect);$('#toggle-multi-select').setAttribute('aria-pressed',String(state.multiSelect));};$('#toggle-grid').onclick=()=>{state.grid=!state.grid;$('#toggle-grid').classList.toggle('active',state.grid);};$('#focus-view').onclick=()=>{state.camera.target=[0,0,0];state.camera.distance=7;};
