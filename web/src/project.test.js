@@ -116,7 +116,7 @@ test("scene document rejects oversized triangle arrays before returning a scene"
   const oversized={...object,mesh:{
     positions:mesh.positions,
     normals:mesh.normals,
-    indices:Array(12_000_003).fill(0)
+    indices:Array(12_000_003)
   }};
   assert.throws(()=>createSceneDocument([oversized]),/indices/);
 });
