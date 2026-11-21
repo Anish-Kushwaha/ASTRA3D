@@ -127,7 +127,7 @@ function performMeshOperation(operation,label){
 
 function dotVector(a,b){return a.reduce((sum,value,index)=>sum+value*b[index],0);}
 function syncGizmoToolButtons(){
- $('[data-gizmo-tool]').forEach(button=>{
+ $$('[data-gizmo-tool]').forEach(button=>{
   const tool=button.dataset.gizmoTool;
   const allowed=['object','vertex'].includes(state.editMode)&&(tool==='move'||state.editMode==='object');
   button.disabled=!allowed;
