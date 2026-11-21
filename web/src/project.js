@@ -3,6 +3,7 @@ const CURRENT_VERSION = 2;
 const MAX_DOCUMENT_BYTES = 64 * 1024 * 1024;
 const MAX_OBJECTS = 10000;
 const MAX_VERTICES = 2_000_000;
+const MAX_TRIANGLES = 4_000_000;
 
 export function cloneData(value) {
   return JSON.parse(JSON.stringify(value));
@@ -33,6 +34,7 @@ function validateMesh(mesh, index) {
     throw new Error(`Object ${index + 1} has invalid vertex normals.`);
   }
   if (!Array.isArray(indices) || indices.length < 3 || indices.length % 3 !== 0 ||
+      indices.length / 3 > MAX_TRIANGLES ||
       !indices.every(value => Number.isInteger(value) && value >= 0 && value < positions.length / 3)) {
     throw new Error(`Object ${index + 1} has invalid triangle indices.`);
   }
@@ -69,6 +71,7 @@ export function parseSceneDocument(source) {
     throw new Error(`Scene contains too many objects (maximum ${MAX_OBJECTS}).`);
   }
   let totalVertices = 0;
+  let totalTriangles = 0;
   const seenIds = new Set();
   const objects = document.objects.map((object, index) => {
     if (!object || typeof object !== "object") throw new Error(`Invalid object at position ${index + 1}.`);
@@ -79,7 +82,9 @@ export function parseSceneDocument(source) {
     if (!name.trim()) throw new Error(`Object ${index + 1} has an empty name.`);
     const mesh = validateMesh(object.mesh, index);
     totalVertices += mesh.positions.length / 3;
+    totalTriangles += mesh.indices.length / 3;
     if (totalVertices > MAX_VERTICES) throw new Error("Scene exceeds the total vertex limit.");
+    if (totalTriangles > MAX_TRIANGLES) throw new Error("Scene exceeds the 4,000,000 triangle limit.");
     return {
       id,
       name,
@@ -122,9 +127,12 @@ export function createSceneDocument(objects, keys = {}) {
 }
 
 export class SceneHistory {
-  constructor(limit = 80) {
+  constructor(limit = 80, maxBytes = 96 * 1024 * 1024) {
     this.limit = Math.max(2, limit);
+    this.maxBytes = Math.max(1024, maxBytes);
     this.entries = [];
+    this.entryBytes = [];
+    this.totalBytes = 0;
     this.index = -1;
   }
 
@@ -132,30 +140,47 @@ export class SceneHistory {
   get canRedo() { return this.index >= 0 && this.index < this.entries.length - 1; }
 
   reset(snapshot) {
-    this.entries = [cloneData(snapshot)];
+    const serialized = JSON.stringify(snapshot);
+    const size = serialized.length * 2;
+    this.entries = [serialized];
+    this.entryBytes = [size];
+    this.totalBytes = size;
     this.index = 0;
   }
 
   push(snapshot) {
-    const next = cloneData(snapshot);
-    if (this.index >= 0 && JSON.stringify(this.entries[this.index]) === JSON.stringify(next)) return false;
+    const serialized = JSON.stringify(snapshot);
+    if (this.index >= 0 && this.entries[this.index] === serialized) return false;
+
     this.entries = this.entries.slice(0, this.index + 1);
-    this.entries.push(next);
-    if (this.entries.length > this.limit) this.entries.shift();
+    this.entryBytes = this.entryBytes.slice(0, this.index + 1);
+    this.totalBytes = this.entryBytes.reduce((sum, size) => sum + size, 0);
+
+    const size = serialized.length * 2;
+    this.entries.push(serialized);
+    this.entryBytes.push(size);
+    this.totalBytes += size;
     this.index = this.entries.length - 1;
+
+    while (this.entries.length > 1 &&
+      (this.entries.length > this.limit || this.totalBytes > this.maxBytes)) {
+      this.totalBytes -= this.entryBytes.shift();
+      this.entries.shift();
+      this.index -= 1;
+    }
     return true;
   }
 
   undo() {
     if (!this.canUndo) return null;
     this.index -= 1;
-    return cloneData(this.entries[this.index]);
+    return JSON.parse(this.entries[this.index]);
   }
 
   redo() {
     if (!this.canRedo) return null;
     this.index += 1;
-    return cloneData(this.entries[this.index]);
+    return JSON.parse(this.entries[this.index]);
   }
 }
 
