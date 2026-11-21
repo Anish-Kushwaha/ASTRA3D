@@ -99,3 +99,25 @@ test("scene mesh preserves polygon face groups and rejects malformed metadata",(
   assert.throws(()=>createSceneDocument([{...object,mesh:{...mesh,faceGroups:[]}}]),/face-group metadata/);
   assert.throws(()=>createSceneDocument([{...object,mesh:{...mesh,faceGroups:[-1]}}]),/face-group metadata/);
 });
+
+test("history drops oldest snapshots when its memory budget is reached",()=>{
+  const history=new SceneHistory(10,120);
+  history.reset({value:""});
+  history.push({value:"A".repeat(30)});
+  history.push({value:"B".repeat(30)});
+  assert.equal(history.entries.length,1);
+  assert.equal(history.canUndo,false);
+  assert.equal(history.undo(),null);
+  assert.equal(history.redo(),null);
+  assert.deepEqual(history.entries[0],JSON.stringify({value:"B".repeat(30)}));
+});
+
+test("scene document rejects oversized triangle arrays before returning a scene",()=>{
+  const oversized={...object,mesh:{
+    positions:mesh.positions,
+    normals:mesh.normals,
+    indices:Array(12_000_003).fill(0)
+  }};
+  assert.throws(()=>createSceneDocument([oversized]),/indices/);
+});
+
