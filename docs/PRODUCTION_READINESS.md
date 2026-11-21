@@ -33,6 +33,7 @@ A release candidate must pass all of the following:
 - Run browser-level end-to-end tests for create/edit/import/export/autosave/undo/redo and verify real exported files open again.
 - Perform performance profiling with documented scene-size targets and frame-time budgets on reference devices.
 - Complete an independent security review of file parsing, browser storage, hosting headers and any future authentication/persistence endpoints.
+- Commit a reviewed web package lockfile and switch CI/hosting installs to npm ci for reproducible dependency resolution; current installs resolve the declared Vite range without a committed lockfile.
 - Add a documented backup/recovery procedure and an incident/contact owner for any hosted service.
 - Complete accessibility and privacy reviews, plus user-facing terms and privacy documentation for any future account, analytics or cloud features.
 
