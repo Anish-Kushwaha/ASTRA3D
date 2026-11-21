@@ -157,3 +157,4 @@
   .edit-mode-switch button{padding:5px 4px;font-size:7px}
   .viewport-controls{gap:1px}
 }
+#bevel-edge,#loop-cut,#extrude-face,#inset-face{width:100%;margin:5px 0}
