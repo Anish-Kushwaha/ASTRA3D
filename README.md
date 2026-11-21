@@ -31,14 +31,16 @@ Create and inspect 3D projects directly in a modern browser on phones, tablets, 
 - Vertex translation, polygon face extrusion, convex-face inset, connected quad-loop cuts, and single-edge beveling on manifold convex faces, with recalculated mesh normals.
 - Polygon face groups are validated and serialized so inset and loop-cut boundaries survive autosave and scene export/import.
 - Transform and base-color inspector with validation.
-- 100-step undo/redo history and keyboard shortcuts (Ctrl/Cmd+Z, Shift+Z, Y).
+- Up-to-100-step undo/redo history with an approximate 96 MiB memory budget and keyboard shortcuts (Ctrl/Cmd+Z, Shift+Z, Y).
 - Local browser autosave and recovery, independent of cloud sign-in.
 - Versioned ASTRA3D Scene JSON v2 with bounded geometry validation and animation keyframe round-tripping.
-- OBJ triangle-mesh import.
+- Validated OBJ triangle-mesh import with bounded file, vertex and triangle counts.
 - ASTRA3D JSON scene import/export.
 - Restricted ASTRA3D script editor that builds primitive scenes without evaluating arbitrary JavaScript.
 - Transform keyframes and timeline playback.
 - Responsive mobile/tablet panel dock, pointer/touch interactions and PWA install support.
+- Bounded scene validation: 10,000 objects, 2,000,000 vertices, 4,000,000 triangles, 50,000 keyframes and 64 MB scene documents.
+- Production hosting security headers, same-origin CSP, immutable hashed-asset caching and supported Node.js CI matrix.
 
 ## Device strategy
 
@@ -83,7 +85,7 @@ See [Product Architecture](docs/PRODUCT_ARCHITECTURE.md), [Cross-device Architec
 
 ## Current status
 
-ASTRA3D is an early engineering foundation, not yet a production-complete Blender/Maya replacement. Advanced proportional editing, bevels, non-manifold repair, arbitrary n-gon triangulation, sculpting, UVs, rigging, skinning, advanced animation, physically based materials, shadows, compositing, robust glTF import/export, plugin SDK, cloud sync and desktop packaging remain future work. Current inset and edge bevel support convex polygon faces; edge bevel is limited to one manifold edge at a time, and Loop Cut follows connected quad-face loops. Viewport Rotate and Scale gizmos currently apply to whole objects; vertex selections support axis-constrained Move only.
+ASTRA3D is an engineering preview / controlled release, not a certified general-availability product or production-complete Blender/Maya replacement. See [Production Readiness](docs/PRODUCTION_READINESS.md) for automated hardening completed and the manual release gates still outstanding. Advanced proportional editing, bevels, non-manifold repair, arbitrary n-gon triangulation, sculpting, UVs, rigging, skinning, advanced animation, physically based materials, shadows, compositing, robust glTF import/export, plugin SDK, cloud sync and desktop packaging remain future work. Current inset and edge bevel support convex polygon faces; edge bevel is limited to one manifold edge at a time, and Loop Cut follows connected quad-face loops. Viewport Rotate and Scale gizmos currently apply to whole objects; vertex selections support axis-constrained Move only.
 
 ## License
 
